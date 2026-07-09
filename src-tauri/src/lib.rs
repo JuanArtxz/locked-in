@@ -925,6 +925,35 @@ fn get_idle_seconds() -> u64 {
   idle_seconds()
 }
 
+/// Old installers shipped migration 006 with content that was later rewritten
+/// as a no-op — sqlx then refuses the db ("previously applied but has been
+/// modified") for anyone upgrading from those builds. Rewrites the recorded
+/// checksum to match the current file and scrubs the legacy seeded API key.
+/// Best-effort: every failure is ignored (fresh installs have nothing to heal).
+fn heal_legacy_db(app: &tauri::AppHandle) {
+  use sha2::{Digest, Sha384};
+  let Ok(dir) = app.path().app_config_dir() else {
+    return;
+  };
+  let db_path = dir.join("locked-in.db");
+  if !db_path.exists() {
+    return;
+  }
+  let Ok(conn) = rusqlite::Connection::open(&db_path) else {
+    return;
+  };
+  let checksum: Vec<u8> =
+    Sha384::digest(include_str!("../migrations/006_default_key.sql").as_bytes()).to_vec();
+  let _ = conn.execute(
+    "UPDATE _sqlx_migrations SET checksum = ?1 WHERE version = 6",
+    rusqlite::params![checksum],
+  );
+  let _ = conn.execute(
+    "UPDATE settings SET value = '' WHERE key = 'anthropic_api_key' AND value LIKE 'sk-ant-api03-QF4r%'",
+    [],
+  );
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -965,6 +994,9 @@ pub fn run() {
       delete_ref_image
     ])
     .setup(|app| {
+      // fix dbs coming from legacy installers BEFORE the frontend loads the db
+      heal_legacy_db(&app.handle());
+
       // anti-instagram: restore today's usage, then start the native watcher
       let mut initial = InstaState::default();
       initial.date = chrono::Local::now().format("%Y-%m-%d").to_string();

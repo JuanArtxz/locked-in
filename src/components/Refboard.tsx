@@ -31,7 +31,8 @@ const RESIZE_EDGES: { dir: string; className: string }[] = [
 export function Refboard() {
   const [images, setImages] = useState<RefImage[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
-  const [pinned, setPinned] = useState(false);
+  // pinned by default — the board floats over everything, like the timer overlay
+  const [pinned, setPinned] = useState(true);
   const [dropHint, setDropHint] = useState(false);
   const dragRef = useRef<DragState>(null);
   const imagesRef = useRef(images);

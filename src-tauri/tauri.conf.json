@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Locked In",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "dev.lockedin.app",
   "build": {
     "frontendDist": "../dist",
@@ -72,7 +72,7 @@
         "decorations": false,
         "transparent": false,
         "shadow": true,
-        "alwaysOnTop": false,
+        "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": false,
         "backgroundThrottling": "disabled"
