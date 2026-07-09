@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import * as db from '../lib/db';
 import { setLang, t } from '../lib/i18n';
 import { playCheckinChime, playNudgeSound } from '../lib/sound';
@@ -226,7 +225,7 @@ export function Popup() {
             <button
               type="button"
               onClick={() => {
-                openUrl(payload.url).catch(() => {});
+                emit('update:install').catch(() => {});
                 hide();
               }}
               className="flex-1 rounded-xl bg-accent py-2 text-[13px] font-semibold text-bg hover:brightness-110"
