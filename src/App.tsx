@@ -141,29 +141,40 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // feed the native watchers (hourly check-in + anti-procrastination nudge)
+  // feed the native watchers (hourly check-in + anti-procrastination nudge);
+  // retries a few times — the very first sync can race Rust initialization
   useEffect(() => {
     const s = settingsHook.settings;
     if (!s) return;
-    invoke('sync_watchers', {
-      cfg: {
-        checkin_enabled: s.checkin_enabled,
-        checkin_interval_min: s.checkin_interval_min,
-        checkin_only_session: s.checkin_only_session,
-        nudge_enabled: s.nudge_enabled,
-        nudge_threshold_min: s.nudge_threshold_min,
-        nudge_apps: s.nudge_apps,
-        session_active: focus.phase === 'focusing',
-        suspended: focus.phase === 'paused' || focus.phase === 'break',
-        lang: s.language === 'en' ? 'en' : 'pt',
-        sound: s.sound_enabled,
-        accent: s.accent_color,
-      },
-    }).catch((err) => {
-      // the native watchers run on defaults if this ever fails — make it loud
-      console.error('[sync_watchers]', err);
-      pushToast(`watchers: ${String(err)}`, 'error');
-    });
+    let cancelled = false;
+    const cfg = {
+      checkin_enabled: s.checkin_enabled,
+      checkin_interval_min: s.checkin_interval_min,
+      checkin_only_session: s.checkin_only_session,
+      nudge_enabled: s.nudge_enabled,
+      nudge_threshold_min: s.nudge_threshold_min,
+      nudge_apps: s.nudge_apps,
+      session_active: focus.phase === 'focusing',
+      suspended: focus.phase === 'paused' || focus.phase === 'break',
+      lang: s.language === 'en' ? 'en' : 'pt',
+      sound: s.sound_enabled,
+      accent: s.accent_color,
+    };
+    const attempt = (triesLeft: number) => {
+      invoke('sync_watchers', { cfg }).catch((err) => {
+        if (cancelled) return;
+        if (triesLeft > 0) {
+          window.setTimeout(() => attempt(triesLeft - 1), 1500);
+        } else {
+          console.error('[sync_watchers]', err);
+          pushToast(`watchers: ${String(err)}`, 'error');
+        }
+      });
+    };
+    attempt(4);
+    return () => {
+      cancelled = true;
+    };
   }, [settingsHook.settings, focus.phase, pushToast]);
 
   useEffect(() => {

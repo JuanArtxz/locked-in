@@ -870,6 +870,9 @@ fn get_idle_seconds() -> u64 {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    // managed BEFORE any window exists — the frontend syncs config the moment it
+    // boots, and setup() runs too late for that first invoke
+    .manage(Mutex::new(WatcherState::default()))
     // second launch just brings the existing (possibly tray-hidden) window forward
     .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
       show_main(app);
@@ -921,8 +924,8 @@ pub fn run() {
         std::thread::spawn(move || insta_watcher(watcher_handle));
       }
 
-      // hourly check-in + anti-procrastination nudge (native thread)
-      app.manage(Mutex::new(WatcherState::default()));
+      // hourly check-in + anti-procrastination nudge (native thread;
+      // its state is managed on the Builder, before any window boots)
       let popup_handle = app.handle().clone();
       std::thread::spawn(move || popup_watcher(popup_handle));
 
