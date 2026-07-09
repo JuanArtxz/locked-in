@@ -1,0 +1,973 @@
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{Emitter, Manager, WindowEvent};
+use tauri_plugin_sql::{Migration, MigrationKind};
+
+// ---------- anti-doomscroll (native watcher, immune to webview throttling) ----------
+// temporarily disabled — flip to true to bring the blocker back
+const DOOMSCROLL_ENABLED: bool = false;
+
+const INSTA_MAX_SNOOZES: u32 = 3;
+const INSTA_SNOOZE_SECS: u64 = 20;
+
+#[derive(Default, Clone)]
+struct InstaCfg {
+  enabled: bool,
+  limit_min: u64,
+  work_min: u64,
+  bonus_min: u64,
+  focus_today_sec: u64,
+}
+
+#[derive(Default)]
+struct InstaState {
+  cfg: InstaCfg,
+  used_sec: u64,
+  date: String,
+  snoozes_used: u32,
+  snooze_until: Option<Instant>,
+  last_persist: u64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct InstaPersist {
+  date: String,
+  used_sec: u64,
+  snoozes_used: u32,
+}
+
+fn insta_file(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+  app
+    .path()
+    .app_config_dir()
+    .ok()
+    .map(|d| d.join("insta_state.json"))
+}
+
+fn insta_persist(app: &tauri::AppHandle, st: &InstaState) {
+  if let Some(path) = insta_file(app) {
+    let data = InstaPersist {
+      date: st.date.clone(),
+      used_sec: st.used_sec,
+      snoozes_used: st.snoozes_used,
+    };
+    if let Ok(json) = serde_json::to_string(&data) {
+      let _ = std::fs::write(path, json);
+    }
+  }
+}
+
+/// Doomscroll detector — expects a lowercased window title.
+fn is_doomscroll(title: &str) -> bool {
+  const PATTERNS: [&str; 6] = ["instagram", "tiktok", "facebook", "reddit", "kwai", "twitter"];
+  if PATTERNS.iter().any(|p| title.contains(p)) {
+    return true;
+  }
+  // x.com tabs: "Página inicial / X - Brave" etc.
+  if title.ends_with("/ x") || title.contains("/ x -") || title.contains("/ x ·") {
+    return true;
+  }
+  // youtube shorts (best-effort: shorts feed or #shorts-tagged titles)
+  if title.contains("youtube") && title.contains("shorts") {
+    return true;
+  }
+  false
+}
+
+fn fg_title() -> Option<String> {
+  use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW};
+  unsafe {
+    let hwnd = GetForegroundWindow();
+    if hwnd.is_invalid() {
+      return None;
+    }
+    let mut buf = [0u16; 512];
+    let len = GetWindowTextW(hwnd, &mut buf);
+    if len <= 0 {
+      return None;
+    }
+    Some(String::from_utf16_lossy(&buf[..len as usize]))
+  }
+}
+
+/// Executable name of the current foreground window (e.g. "Discord.exe").
+fn fg_exe() -> Option<String> {
+  use windows::Win32::Foundation::CloseHandle;
+  use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION,
+  };
+  use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
+  unsafe {
+    let hwnd = GetForegroundWindow();
+    if hwnd.is_invalid() {
+      return None;
+    }
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid == 0 {
+      return None;
+    }
+    let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+    let mut buf = [0u16; 512];
+    let mut len = buf.len() as u32;
+    let result = QueryFullProcessImageNameW(
+      handle,
+      PROCESS_NAME_WIN32,
+      windows::core::PWSTR(buf.as_mut_ptr()),
+      &mut len,
+    );
+    let _ = CloseHandle(handle);
+    result.ok()?;
+    let path = String::from_utf16_lossy(&buf[..len as usize]);
+    path.rsplit('\\').next().map(|s| s.to_string())
+  }
+}
+
+/// Seconds since the last keyboard/mouse input, system-wide.
+fn idle_seconds() -> u64 {
+  use windows::Win32::System::SystemInformation::GetTickCount;
+  use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+
+  unsafe {
+    let mut info = LASTINPUTINFO {
+      cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+      dwTime: 0,
+    };
+    if GetLastInputInfo(&mut info).as_bool() {
+      let tick = GetTickCount();
+      (tick.wrapping_sub(info.dwTime) / 1000) as u64
+    } else {
+      0
+    }
+  }
+}
+
+// ---------- popup watchers: hourly check-in + anti-procrastination nudge ----------
+// Native threads so WebView2 timer throttling can never silence them.
+
+const NUDGE_COOLDOWN_SECS: u64 = 10 * 60;
+const NUDGE_AWAY_RESET_SECS: u64 = 45;
+
+#[derive(Default, Clone, serde::Deserialize)]
+struct WatcherCfg {
+  checkin_enabled: bool,
+  checkin_interval_min: u64,
+  checkin_only_session: bool,
+  nudge_enabled: bool,
+  nudge_threshold_min: u64,
+  nudge_apps: String,
+  session_active: bool,
+  /// true while on break or paused — nudges stay quiet
+  suspended: bool,
+  lang: String,
+  sound: bool,
+  accent: String,
+}
+
+#[derive(Default)]
+struct WatcherState {
+  cfg: WatcherCfg,
+  /// (day, slot, interval) of the last seen check-in period
+  last_slot: Option<(String, i64, i64)>,
+  /// continuous seconds on a distraction app/site
+  acc_sec: u64,
+  /// continuous seconds away from any distraction (resets acc past a grace)
+  away_sec: u64,
+  current_app: String,
+  nudge_cooldown_until: Option<Instant>,
+}
+
+fn fmt_min(total_min: i64) -> String {
+  let m = total_min.rem_euclid(24 * 60);
+  format!("{:02}:{:02}", m / 60, m % 60)
+}
+
+fn title_case(s: &str) -> String {
+  let mut c = s.chars();
+  match c.next() {
+    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    None => String::new(),
+  }
+}
+
+/// Matches the lowercased window title / exe against the comma-separated
+/// distraction list. Multi-word entries require every word in the title.
+fn match_distraction(title: &str, exe: &str, list: &str) -> Option<String> {
+  for raw in list.split(',') {
+    let entry = raw.trim().to_lowercase();
+    if entry.is_empty() {
+      continue;
+    }
+    let hit = if entry.contains(' ') {
+      entry.split_whitespace().all(|w| title.contains(w))
+    } else {
+      title.contains(&entry) || exe.contains(&entry)
+    };
+    if hit {
+      return Some(entry);
+    }
+    // x.com tabs render as "Home / X - Brave" — cover them when twitter/x is watched
+    if (entry == "twitter" || entry == "x.com")
+      && (title.ends_with("/ x") || title.contains("/ x -") || title.contains("/ x ·"))
+    {
+      return Some("twitter".into());
+    }
+  }
+  None
+}
+
+/// Moves the popup window to the bottom-right corner of the primary work area.
+fn position_popup(window: &tauri::WebviewWindow) {
+  use windows::Win32::Foundation::RECT;
+  use windows::Win32::UI::WindowsAndMessaging::{
+    SystemParametersInfoW, SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+  };
+
+  let mut rect = RECT::default();
+  let ok = unsafe {
+    SystemParametersInfoW(
+      SPI_GETWORKAREA,
+      0,
+      Some(&mut rect as *mut _ as *mut _),
+      SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+    )
+  }
+  .is_ok();
+  if !ok {
+    return;
+  }
+  let size = match window.outer_size() {
+    Ok(s) => s,
+    Err(_) => return,
+  };
+  let margin = (16.0 * window.scale_factor().unwrap_or(1.0)) as i32;
+  let x = rect.right - size.width as i32 - margin;
+  let y = rect.bottom - size.height as i32 - margin;
+  let _ = window.set_position(tauri::PhysicalPosition { x, y });
+}
+
+fn fire_popup(handle: &tauri::AppHandle, payload: serde_json::Value) {
+  if let Some(w) = handle.get_webview_window("popup") {
+    position_popup(&w);
+    let _ = handle.emit_to("popup", "popup:show", payload);
+    let _ = w.show();
+    let _ = w.set_always_on_top(true);
+  }
+}
+
+fn popup_watcher(handle: tauri::AppHandle) {
+  use chrono::Timelike;
+
+  let mut last = Instant::now();
+  loop {
+    std::thread::sleep(Duration::from_secs(3));
+    let delta = last.elapsed().as_secs().clamp(1, 60);
+    last = Instant::now();
+
+    let state = handle.state::<Mutex<WatcherState>>();
+    let mut st = state.lock().unwrap();
+    let cfg = st.cfg.clone();
+
+    // ---- hourly check-in: fire when an interval boundary is crossed ----
+    let now = chrono::Local::now();
+    let interval = (cfg.checkin_interval_min.clamp(5, 24 * 60)) as i64;
+    let mins = (now.hour() * 60 + now.minute()) as i64;
+    let slot = mins / interval;
+    let day = now.format("%Y-%m-%d").to_string();
+    let boundary_close = mins % interval < 2;
+
+    let changed = match &st.last_slot {
+      None => {
+        st.last_slot = Some((day.clone(), slot, interval));
+        false
+      }
+      Some((d, s, iv)) if *iv != interval => {
+        // interval setting changed — resync without firing
+        let _ = (d, s);
+        st.last_slot = Some((day.clone(), slot, interval));
+        false
+      }
+      Some((d, s, _)) if *d != day || *s != slot => {
+        st.last_slot = Some((day.clone(), slot, interval));
+        true
+      }
+      _ => false,
+    };
+
+    if changed
+      && boundary_close
+      && cfg.checkin_enabled
+      && (!cfg.checkin_only_session || cfg.session_active)
+      && idle_seconds() < 600
+    {
+      // the period that just ended
+      let (p_day, start_min, end_min) = if mins < interval {
+        // first slot of the day → yesterday's last period
+        let yesterday = (now.date_naive() - chrono::Days::new(1))
+          .format("%Y-%m-%d")
+          .to_string();
+        let total = 24 * 60;
+        let start = ((total - 1) / interval) * interval;
+        (yesterday, start, total)
+      } else {
+        let end = slot * interval;
+        (day.clone(), end - interval, end)
+      };
+      fire_popup(
+        &handle,
+        serde_json::json!({
+          "kind": "checkin",
+          "day": p_day,
+          "periodStart": fmt_min(start_min),
+          "periodEnd": fmt_min(end_min),
+          "lang": cfg.lang,
+          "sound": cfg.sound,
+          "accent": cfg.accent,
+        }),
+      );
+      continue;
+    }
+
+    // ---- anti-procrastination nudge ----
+    let title = fg_title().unwrap_or_default().to_lowercase();
+    if !title.contains("locked in") {
+      let exe = fg_exe().unwrap_or_default().to_lowercase();
+      match match_distraction(&title, &exe, &cfg.nudge_apps) {
+        Some(label) => {
+          st.acc_sec += delta;
+          st.away_sec = 0;
+          st.current_app = label;
+        }
+        None => {
+          st.away_sec += delta;
+          if st.away_sec >= NUDGE_AWAY_RESET_SECS {
+            st.acc_sec = 0;
+          }
+        }
+      }
+    }
+
+    let cooldown_ok = st
+      .nudge_cooldown_until
+      .map(|t| Instant::now() >= t)
+      .unwrap_or(true);
+    let popup_busy = handle
+      .get_webview_window("popup")
+      .and_then(|w| w.is_visible().ok())
+      .unwrap_or(false);
+
+    if cfg.nudge_enabled
+      && !cfg.suspended
+      && cooldown_ok
+      && !popup_busy
+      && st.acc_sec >= cfg.nudge_threshold_min.max(1) * 60
+    {
+      st.nudge_cooldown_until = Some(Instant::now() + Duration::from_secs(NUDGE_COOLDOWN_SECS));
+      let payload = serde_json::json!({
+        "kind": "nudge",
+        "app": title_case(&st.current_app),
+        "minutes": st.acc_sec / 60,
+        "lang": cfg.lang,
+        "sound": cfg.sound,
+        "accent": cfg.accent,
+      });
+      fire_popup(&handle, payload);
+    }
+  }
+}
+
+/// Frontend feeds settings + live session phase into the native watchers.
+#[tauri::command]
+fn sync_watchers(state: tauri::State<'_, Mutex<WatcherState>>, cfg: WatcherCfg) {
+  let mut st = state.lock().unwrap();
+  st.cfg = cfg;
+}
+
+/// Fires the check-in popup immediately (preview from Settings; popup won't persist).
+#[tauri::command]
+fn test_checkin(app: tauri::AppHandle, state: tauri::State<'_, Mutex<WatcherState>>) {
+  use chrono::Timelike;
+  let cfg = state.lock().unwrap().cfg.clone();
+  let now = chrono::Local::now();
+  let interval = (cfg.checkin_interval_min.clamp(5, 24 * 60)) as i64;
+  let mins = (now.hour() * 60 + now.minute()) as i64;
+  let slot = mins / interval;
+  let (day, start_min, end_min) = if slot == 0 {
+    let yesterday = (now.date_naive() - chrono::Days::new(1))
+      .format("%Y-%m-%d")
+      .to_string();
+    let total = 24 * 60;
+    (yesterday, ((total - 1) / interval) * interval, total)
+  } else {
+    (
+      now.format("%Y-%m-%d").to_string(),
+      (slot - 1) * interval,
+      slot * interval,
+    )
+  };
+  fire_popup(
+    &app,
+    serde_json::json!({
+      "kind": "checkin",
+      "day": day,
+      "periodStart": fmt_min(start_min),
+      "periodEnd": fmt_min(end_min),
+      "lang": cfg.lang,
+      "sound": cfg.sound,
+      "accent": cfg.accent,
+      "test": true,
+    }),
+  );
+}
+
+/// Fires the anti-procrastination nudge immediately (preview from Settings).
+#[tauri::command]
+fn test_nudge(app: tauri::AppHandle, state: tauri::State<'_, Mutex<WatcherState>>) {
+  let cfg = state.lock().unwrap().cfg.clone();
+  fire_popup(
+    &app,
+    serde_json::json!({
+      "kind": "nudge",
+      "app": "Discord",
+      "minutes": cfg.nudge_threshold_min.max(1),
+      "lang": cfg.lang,
+      "sound": cfg.sound,
+      "accent": cfg.accent,
+    }),
+  );
+}
+
+/// New version available — shows the custom update popup in the corner.
+#[tauri::command]
+fn show_update_popup(
+  app: tauri::AppHandle,
+  state: tauri::State<'_, Mutex<WatcherState>>,
+  version: String,
+  url: String,
+) {
+  let cfg = state.lock().unwrap().cfg.clone();
+  fire_popup(
+    &app,
+    serde_json::json!({
+      "kind": "update",
+      "version": version,
+      "url": url,
+      "lang": cfg.lang,
+      "sound": cfg.sound,
+      "accent": cfg.accent,
+    }),
+  );
+}
+
+/// Generic in-app notification card (milestones, burnout, auto-end, break end) —
+/// replaces the native Windows toast everywhere.
+#[tauri::command]
+fn show_notice(
+  app: tauri::AppHandle,
+  state: tauri::State<'_, Mutex<WatcherState>>,
+  title: String,
+  body: String,
+  mood: String,
+) {
+  let cfg = state.lock().unwrap().cfg.clone();
+  fire_popup(
+    &app,
+    serde_json::json!({
+      "kind": "notice",
+      "title": title,
+      "body": body,
+      "mood": mood,
+      "lang": cfg.lang,
+      "sound": false,
+      "accent": cfg.accent,
+    }),
+  );
+}
+
+/// "I'm back" / snooze from the nudge popup: reset the counter with a grace period.
+#[tauri::command]
+fn nudge_ack(state: tauri::State<'_, Mutex<WatcherState>>, grace_min: u64) {
+  let mut st = state.lock().unwrap();
+  st.acc_sec = 0;
+  st.away_sec = 0;
+  st.nudge_cooldown_until =
+    Some(Instant::now() + Duration::from_secs(grace_min.clamp(1, 60) * 60));
+}
+
+fn insta_watcher(handle: tauri::AppHandle) {
+  let mut last = Instant::now();
+  // 3s normally; 1s hunter-mode once the limit is blown, so reopening
+  // instagram gets blocked near-instantly
+  let mut tick = Duration::from_secs(3);
+  loop {
+    std::thread::sleep(tick);
+    let delta = last.elapsed().as_secs().clamp(1, 120);
+    last = Instant::now();
+
+    let title = fg_title().unwrap_or_default().to_lowercase();
+    let own = title.contains("locked in");
+    let on_insta = is_doomscroll(&title);
+
+    let state = handle.state::<Mutex<InstaState>>();
+    let mut st = state.lock().unwrap();
+    if !st.cfg.enabled {
+      continue;
+    }
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    if st.date != today {
+      st.date = today;
+      st.used_sec = 0;
+      st.snoozes_used = 0;
+      st.snooze_until = None;
+      st.last_persist = 0;
+    }
+
+    if own {
+      continue; // our own windows never count as insta nor as "left insta"
+    }
+
+    if on_insta {
+      st.used_sec += delta;
+    }
+
+    let work_sec = st.cfg.work_min.max(1) * 60;
+    let allowance =
+      st.cfg.limit_min * 60 + (st.cfg.focus_today_sec / work_sec) * st.cfg.bonus_min * 60;
+    let over = st.used_sec >= allowance;
+    let snoozed = st.snooze_until.map(|t| t > Instant::now()).unwrap_or(false);
+
+    if st.used_sec >= st.last_persist + 15 {
+      st.last_persist = st.used_sec;
+      insta_persist(&handle, &st);
+    }
+
+    let used = st.used_sec;
+    let snoozes_left = INSTA_MAX_SNOOZES.saturating_sub(st.snoozes_used);
+    let focus_to_next = work_sec - (st.cfg.focus_today_sec % work_sec);
+    let bonus = st.cfg.bonus_min;
+    drop(st);
+
+    tick = if over {
+      Duration::from_secs(1)
+    } else {
+      Duration::from_secs(3)
+    };
+
+    if let Some(blocker) = handle.get_webview_window("blocker") {
+      if on_insta && over && !snoozed {
+        let _ = handle.emit_to(
+          "blocker",
+          "blocker:state",
+          serde_json::json!({
+            "usedSec": used,
+            "allowanceSec": allowance,
+            "focusToNextSec": focus_to_next,
+            "bonusMin": bonus,
+            "snoozesLeft": snoozes_left,
+          }),
+        );
+        // unconditional every tick: Windows sometimes reports the window as
+        // visible while it never actually came to the front — force it
+        let _ = blocker.show();
+        let _ = blocker.set_always_on_top(true);
+        let _ = blocker.set_focus();
+      } else if !on_insta && blocker.is_visible().unwrap_or(false) {
+        let _ = blocker.hide();
+      }
+    }
+  }
+}
+
+/// Finds the visible window whose title mentions Instagram and sends it Ctrl+W
+/// (closes just that browser tab — user-initiated, nothing destructive).
+#[tauri::command]
+fn close_insta_tab() -> bool {
+  use windows::core::BOOL;
+  use windows::Win32::Foundation::{HWND, LPARAM};
+  use windows::Win32::UI::Input::KeyboardAndMouse::{
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    VK_CONTROL,
+  };
+  use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindowTextW, IsWindowVisible, SetForegroundWindow,
+  };
+
+  unsafe extern "system" fn find_insta(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let out = lparam.0 as *mut HWND;
+    if IsWindowVisible(hwnd).as_bool() {
+      let mut buf = [0u16; 512];
+      let len = GetWindowTextW(hwnd, &mut buf);
+      if len > 0 {
+        let title = String::from_utf16_lossy(&buf[..len as usize]).to_lowercase();
+        if is_doomscroll(&title) {
+          unsafe { *out = hwnd };
+          return BOOL(0); // stop enumeration
+        }
+      }
+    }
+    BOOL(1)
+  }
+
+  unsafe {
+    let mut found = HWND::default();
+    let _ = EnumWindows(Some(find_insta), LPARAM(&mut found as *mut HWND as isize));
+    if found.is_invalid() {
+      return false;
+    }
+    let _ = SetForegroundWindow(found);
+    std::thread::sleep(Duration::from_millis(150));
+
+    let key = |vk: VIRTUAL_KEY, up: bool| INPUT {
+      r#type: INPUT_KEYBOARD,
+      Anonymous: INPUT_0 {
+        ki: KEYBDINPUT {
+          wVk: vk,
+          wScan: 0,
+          dwFlags: if up { KEYEVENTF_KEYUP } else { Default::default() },
+          time: 0,
+          dwExtraInfo: 0,
+        },
+      },
+    };
+    let inputs = [
+      key(VK_CONTROL, false),
+      key(VIRTUAL_KEY(0x57), false), // W
+      key(VIRTUAL_KEY(0x57), true),
+      key(VK_CONTROL, true),
+    ];
+    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    true
+  }
+}
+
+/// Called by the frontend to feed settings + today's focus time; returns used seconds.
+#[tauri::command]
+fn sync_insta(
+  state: tauri::State<'_, Mutex<InstaState>>,
+  enabled: bool,
+  limit_min: u64,
+  work_min: u64,
+  bonus_min: u64,
+  focus_today_sec: u64,
+) -> u64 {
+  let mut st = state.lock().unwrap();
+  st.cfg = InstaCfg {
+    enabled,
+    limit_min,
+    work_min,
+    bonus_min,
+    focus_today_sec,
+  };
+  st.used_sec
+}
+
+/// One of the limited daily snoozes: hides the blocker for a few seconds.
+#[tauri::command]
+fn insta_snooze(app: tauri::AppHandle, state: tauri::State<'_, Mutex<InstaState>>) -> u32 {
+  let mut st = state.lock().unwrap();
+  let left = INSTA_MAX_SNOOZES.saturating_sub(st.snoozes_used);
+  if left == 0 {
+    return 0;
+  }
+  st.snoozes_used += 1;
+  st.snooze_until = Some(Instant::now() + Duration::from_secs(INSTA_SNOOZE_SECS));
+  let remaining = INSTA_MAX_SNOOZES.saturating_sub(st.snoozes_used);
+  insta_persist(&app, &st);
+  drop(st);
+  if let Some(b) = app.get_webview_window("blocker") {
+    let _ = b.hide();
+  }
+  remaining
+}
+
+fn migrations() -> Vec<Migration> {
+  vec![
+    Migration {
+      version: 1,
+      description: "create_core_tables",
+      sql: include_str!("../migrations/001_init.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 2,
+      description: "create_milestones",
+      sql: include_str!("../migrations/002_milestones.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 3,
+      description: "settings_v2_defaults",
+      sql: include_str!("../migrations/003_settings_v2.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 4,
+      description: "mirror_afk_habits",
+      sql: include_str!("../migrations/004_mirror_habits.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 5,
+      description: "chat_autoend_settings",
+      sql: include_str!("../migrations/005_v4.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 6,
+      description: "default_api_key",
+      sql: include_str!("../migrations/006_default_key.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 7,
+      description: "anti_instagram",
+      sql: include_str!("../migrations/007_anti_insta.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 8,
+      description: "chat_state",
+      sql: include_str!("../migrations/008_chat_state.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 9,
+      description: "language_and_conversations",
+      sql: include_str!("../migrations/009_lang_convos.sql"),
+      kind: MigrationKind::Up,
+    },
+    Migration {
+      version: 10,
+      description: "pause_and_hourly_log",
+      sql: include_str!("../migrations/010_v5.sql"),
+      kind: MigrationKind::Up,
+    },
+  ]
+}
+
+#[tauri::command]
+fn set_tray_status(app: tauri::AppHandle, tooltip: String) {
+  if let Some(tray) = app.tray_by_id("main-tray") {
+    let _ = tray.set_tooltip(Some(tooltip.as_str()));
+  }
+}
+
+/// Rebuilds the tray menu in the chosen language.
+#[tauri::command]
+fn set_tray_lang(app: tauri::AppHandle, lang: String) -> Result<(), String> {
+  let (open_label, quit_label) = if lang == "en" {
+    ("Open", "Quit")
+  } else {
+    ("Abrir", "Sair")
+  };
+  let show_item =
+    MenuItem::with_id(&app, "show", open_label, true, None::<&str>).map_err(|e| e.to_string())?;
+  let quit_item =
+    MenuItem::with_id(&app, "quit", quit_label, true, None::<&str>).map_err(|e| e.to_string())?;
+  let menu = Menu::with_items(&app, &[&show_item, &quit_item]).map_err(|e| e.to_string())?;
+  if let Some(tray) = app.tray_by_id("main-tray") {
+    tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+  }
+  Ok(())
+}
+
+/// Shows the main window and re-applies the app icon — Windows sometimes
+/// reverts the taskbar icon after a hide/show cycle from the tray.
+fn show_main(app: &tauri::AppHandle) {
+  if let Some(window) = app.get_webview_window("main") {
+    if let Some(icon) = app.default_window_icon() {
+      let _ = window.set_icon(icon.clone());
+    }
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+  }
+}
+
+#[tauri::command]
+fn show_main_window(app: tauri::AppHandle) {
+  show_main(&app);
+}
+
+
+/// Executable name of the current foreground window (e.g. "RobloxStudioBeta.exe").
+#[tauri::command]
+fn get_foreground_app() -> Option<String> {
+  fg_exe()
+}
+
+/// Copies the sqlite db (plus WAL/SHM) to backups/locked-in-YYYY-MM-DD.db,
+/// once per day, keeping the 14 most recent backups.
+#[tauri::command]
+fn backup_database(app: tauri::AppHandle) -> Result<String, String> {
+  use std::fs;
+
+  let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+  let db = dir.join("locked-in.db");
+  if !db.exists() {
+    return Ok("no-db".into());
+  }
+  let backups = dir.join("backups");
+  fs::create_dir_all(&backups).map_err(|e| e.to_string())?;
+
+  let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+  let target = backups.join(format!("locked-in-{today}.db"));
+  if target.exists() {
+    return Ok("already-done".into());
+  }
+
+  fs::copy(&db, &target).map_err(|e| e.to_string())?;
+  for ext in ["-wal", "-shm"] {
+    let side = dir.join(format!("locked-in.db{ext}"));
+    if side.exists() {
+      let _ = fs::copy(&side, backups.join(format!("locked-in-{today}.db{ext}")));
+    }
+  }
+
+  // prune: keep the 14 newest daily backups (plus their sidecars)
+  let mut days: Vec<String> = fs::read_dir(&backups)
+    .map_err(|e| e.to_string())?
+    .flatten()
+    .filter_map(|e| {
+      let name = e.file_name().to_string_lossy().to_string();
+      if name.starts_with("locked-in-") && name.ends_with(".db") {
+        Some(name)
+      } else {
+        None
+      }
+    })
+    .collect();
+  days.sort();
+  while days.len() > 14 {
+    let old = days.remove(0);
+    let _ = fs::remove_file(backups.join(&old));
+    for ext in ["-wal", "-shm"] {
+      let _ = fs::remove_file(backups.join(format!("{old}{ext}")));
+    }
+  }
+
+  Ok(target.display().to_string())
+}
+
+/// Title of the current foreground window (e.g. the active browser tab title).
+#[tauri::command]
+fn get_foreground_window_title() -> Option<String> {
+  fg_title()
+}
+
+/// Seconds since the last keyboard/mouse input, system-wide.
+#[tauri::command]
+fn get_idle_seconds() -> u64 {
+  idle_seconds()
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+  tauri::Builder::default()
+    // second launch just brings the existing (possibly tray-hidden) window forward
+    .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+      show_main(app);
+    }))
+    .plugin(
+      tauri_plugin_sql::Builder::default()
+        .add_migrations("sqlite:locked-in.db", migrations())
+        .build(),
+    )
+    .plugin(tauri_plugin_notification::init())
+    .plugin(tauri_plugin_opener::init())
+    .invoke_handler(tauri::generate_handler![
+      set_tray_status,
+      set_tray_lang,
+      get_foreground_app,
+      get_idle_seconds,
+      get_foreground_window_title,
+      backup_database,
+      sync_insta,
+      insta_snooze,
+      close_insta_tab,
+      show_main_window,
+      sync_watchers,
+      nudge_ack,
+      test_checkin,
+      test_nudge,
+      show_notice,
+      show_update_popup
+    ])
+    .setup(|app| {
+      // anti-instagram: restore today's usage, then start the native watcher
+      let mut initial = InstaState::default();
+      initial.date = chrono::Local::now().format("%Y-%m-%d").to_string();
+      if let Some(path) = insta_file(&app.handle()) {
+        if let Ok(raw) = std::fs::read_to_string(path) {
+          if let Ok(saved) = serde_json::from_str::<InstaPersist>(&raw) {
+            if saved.date == initial.date {
+              initial.used_sec = saved.used_sec;
+              initial.snoozes_used = saved.snoozes_used;
+            }
+          }
+        }
+      }
+      app.manage(Mutex::new(initial));
+      if DOOMSCROLL_ENABLED {
+        let watcher_handle = app.handle().clone();
+        std::thread::spawn(move || insta_watcher(watcher_handle));
+      }
+
+      // hourly check-in + anti-procrastination nudge (native thread)
+      app.manage(Mutex::new(WatcherState::default()));
+      let popup_handle = app.handle().clone();
+      std::thread::spawn(move || popup_watcher(popup_handle));
+
+      if cfg!(debug_assertions) {
+        app.handle().plugin(
+          tauri_plugin_log::Builder::default()
+            .level(log::LevelFilter::Info)
+            .build(),
+        )?;
+      }
+
+      let show_item = MenuItem::with_id(app, "show", "Abrir", true, None::<&str>)?;
+      let quit_item = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
+      let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+      let _tray = TrayIconBuilder::with_id("main-tray")
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+          "quit" => app.exit(0),
+          "show" => show_main(app),
+          _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+          if let tauri::tray::TrayIconEvent::Click {
+            button: tauri::tray::MouseButton::Left,
+            button_state: tauri::tray::MouseButtonState::Up,
+            ..
+          } = event
+          {
+            show_main(tray.app_handle());
+          }
+        })
+        .build(app)?;
+
+      let window = app.get_webview_window("main").unwrap();
+      let window_clone = window.clone();
+      window.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+          api.prevent_close();
+          let _ = window_clone.hide();
+        }
+      });
+
+      Ok(())
+    })
+    .run(tauri::generate_context!())
+    .expect("error while running tauri application");
+}
+ 
