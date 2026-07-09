@@ -10,9 +10,9 @@ $conf = Get-Content "src-tauri\tauri.conf.json" -Raw | ConvertFrom-Json
 $version = $conf.version
 Write-Host "Releasing v$version" -ForegroundColor Green
 
-# signed build (private key never lives in the repo)
+# signed build (private key + password never live in the repo)
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\lockedin.key" -Raw
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = Get-Content "$env:USERPROFILE\.tauri\lockedin.key.pass" -Raw
 npm run tauri build
 if ($LASTEXITCODE -ne 0) { throw "build failed" }
 
