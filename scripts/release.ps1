@@ -1,4 +1,4 @@
-# Locked In release script
+# Locked In release script (ASCII only - PowerShell 5.1 chokes on smart punctuation)
 # Usage: .\scripts\release.ps1  (run from the repo root, after bumping "version" in src-tauri\tauri.conf.json)
 # Builds a signed installer, creates the GitHub release, uploads the artifacts
 # and updates latest.json so every installed app shows the update popup.
@@ -25,14 +25,14 @@ if (-not $exe -or -not $sig) { throw "installer or signature not found in $bundl
 gh release create "v$version" $exe.FullName $sig.FullName --repo $repo --title "Locked In v$version" --generate-notes
 if ($LASTEXITCODE -ne 0) { throw "gh release failed" }
 
-# updater manifest — the asset name GitHub exposes replaces spaces with dots
+# updater manifest (GitHub asset names replace spaces with dots)
 $assetName = $exe.Name -replace ' ', '.'
 $manifest = [ordered]@{
   version   = $version
   pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   platforms = [ordered]@{
     "windows-x86_64" = [ordered]@{
-      signature = (Get-Content $sig.FullName -Raw)
+      signature = (Get-Content $sig.FullName -Raw).Trim()
       url       = "https://github.com/$repo/releases/download/v$version/$assetName"
     }
   }
@@ -42,4 +42,4 @@ $manifest | ConvertTo-Json -Depth 5 | Out-File "latest.json" -Encoding utf8
 git add latest.json
 git commit -m "release v$version"
 git push
-Write-Host "v$version released — every app will show the update popup within 6h (or on next launch)" -ForegroundColor Green
+Write-Host "v$version released - every app shows the update popup within 6h or on next launch" -ForegroundColor Green
