@@ -159,8 +159,12 @@ function AppShell() {
         sound: s.sound_enabled,
         accent: s.accent_color,
       },
-    }).catch(() => {});
-  }, [settingsHook.settings, focus.phase]);
+    }).catch((err) => {
+      // the native watchers run on defaults if this ever fails — make it loud
+      console.error('[sync_watchers]', err);
+      pushToast(`watchers: ${String(err)}`, 'error');
+    });
+  }, [settingsHook.settings, focus.phase, pushToast]);
 
   useEffect(() => {
     if (focus.error) onError(focus.error);

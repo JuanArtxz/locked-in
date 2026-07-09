@@ -35,6 +35,11 @@ export function Popup() {
   useEffect(() => {
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
+    // baseline language straight from the db — even if a payload ever arrives
+    // without lang, the popup already speaks the user's language
+    db.getAllSettings()
+      .then((s) => setLang(s.language === 'en' ? 'en' : 'pt'))
+      .catch(() => {});
     let unlisten: (() => void) | undefined;
     listen<PopupPayload>('popup:show', (e) => {
       setPayload(e.payload);
@@ -47,8 +52,9 @@ export function Popup() {
     return () => unlisten?.();
   }, []);
 
-  // language applies during render so even the very first paint is translated
-  if (payload) setLang(payload.lang === 'en' ? 'en' : 'pt');
+  // language applies during render so even the very first paint is translated;
+  // an empty lang in the payload keeps the db baseline instead of forcing pt
+  if (payload && (payload.lang === 'en' || payload.lang === 'pt')) setLang(payload.lang);
 
   // theme + entrance sound
   useEffect(() => {

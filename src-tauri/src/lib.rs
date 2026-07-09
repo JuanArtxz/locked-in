@@ -153,6 +153,7 @@ const NUDGE_COOLDOWN_SECS: u64 = 10 * 60;
 const NUDGE_AWAY_RESET_SECS: u64 = 45;
 
 #[derive(Default, Clone, serde::Deserialize)]
+#[serde(default)]
 struct WatcherCfg {
   checkin_enabled: bool,
   checkin_interval_min: u64,
