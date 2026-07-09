@@ -312,14 +312,20 @@ const dict: Record<string, { pt: string; en: string }> = {
   },
   'ci.streakon': { pt: '{0} seguidas 🔥', en: '{0} in a row 🔥' },
 
-  // update popup
+  // update popup + installer screen
   'up.title': { pt: 'Atualização disponível', en: 'Update available' },
   'up.body': {
-    pt: 'saiu versão nova do Locked In. Baixa aí que é rapidinho 🚀',
-    en: 'a new Locked In version is out. Grab it, takes a minute 🚀',
+    pt: 'saiu versão nova do Locked In. Um clique: baixa, instala e reabre sozinho 🚀',
+    en: 'a new Locked In version is out. One click: downloads, installs and reopens itself 🚀',
   },
-  'up.get': { pt: 'Baixar atualização', en: 'Download update' },
+  'up.get': { pt: 'Atualizar agora', en: 'Update now' },
   'up.later': { pt: 'Depois', en: 'Later' },
+  'up.installing': { pt: 'Instalando', en: 'Installing' },
+  'up.installing.sub': {
+    pt: 'não fecha o app — ele reinicia sozinho na versão nova',
+    en: "don't close the app — it restarts itself on the new version",
+  },
+  'up.error': { pt: 'atualização falhou: {0}', en: 'update failed: {0}' },
 
   // nudge popup
   'nudge.title': { pt: 'ei. LOCKED IN.', en: 'hey. LOCKED IN.' },

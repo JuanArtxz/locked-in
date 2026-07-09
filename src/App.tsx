@@ -14,9 +14,11 @@ import { useFocusSession } from './hooks/useFocusSession';
 import { useSettings } from './hooks/useSettings';
 import { ToastProvider, useToast } from './hooks/useToast';
 import * as db from './lib/db';
+import { check } from '@tauri-apps/plugin-updater';
+import type { Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { setLang, t } from './lib/i18n';
 import { checkMilestones } from './lib/milestones';
-import { checkForUpdate } from './lib/updates';
 import { playChime } from './lib/sound';
 import { formatHms, todayKey } from './lib/time';
 import { Mascot } from './components/Mascot';
@@ -81,25 +83,62 @@ function AppShell() {
     return () => window.clearTimeout(id);
   }, []);
 
-  // update check: on boot (after watcher cfg sync) and every 6h; popup once per version
+  // auto-update: check on boot + every 6h → corner popup → one click downloads,
+  // installs with a progress screen and relaunches into the new version
+  const [updating, setUpdating] = useState<{ version: string; pct: number | null } | null>(null);
+  const pendingUpdateRef = useRef<Update | null>(null);
   useEffect(() => {
     let shownFor: string | null = null;
-    const check = () => {
-      checkForUpdate()
-        .then((m) => {
-          if (m && shownFor !== m.version) {
-            shownFor = m.version;
-            invoke('show_update_popup', { version: m.version, url: m.url }).catch(() => {});
+    const lookForUpdate = () => {
+      check()
+        .then((update) => {
+          if (update && shownFor !== update.version) {
+            shownFor = update.version;
+            pendingUpdateRef.current = update;
+            invoke('show_update_popup', { version: update.version, url: '' }).catch(() => {});
           }
         })
-        .catch(() => {}); // offline / manifest not set up yet — silently skip
+        .catch(() => {}); // offline / manifest missing — silently skip
     };
-    const boot = window.setTimeout(check, 8_000);
-    const iv = window.setInterval(check, 6 * 3600_000);
+    const boot = window.setTimeout(lookForUpdate, 8_000);
+    const iv = window.setInterval(lookForUpdate, 6 * 3600_000);
+
+    let unlisten: (() => void) | undefined;
+    listen('update:install', async () => {
+      const update = pendingUpdateRef.current;
+      if (!update) return;
+      invoke('show_main_window').catch(() => {});
+      setUpdating({ version: update.version, pct: null });
+      try {
+        let total = 0;
+        let received = 0;
+        await update.downloadAndInstall((e) => {
+          if (e.event === 'Started') {
+            total = e.data.contentLength ?? 0;
+          } else if (e.event === 'Progress') {
+            received += e.data.chunkLength;
+            if (total > 0) {
+              setUpdating({ version: update.version, pct: Math.min(99, (received / total) * 100) });
+            }
+          } else if (e.event === 'Finished') {
+            setUpdating({ version: update.version, pct: 100 });
+          }
+        });
+        await relaunch();
+      } catch (err) {
+        setUpdating(null);
+        pushToast(t('up.error', String(err)), 'error');
+      }
+    }).then((u) => {
+      unlisten = u;
+    });
+
     return () => {
       window.clearTimeout(boot);
       window.clearInterval(iv);
+      unlisten?.();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // feed the native watchers (hourly check-in + anti-procrastination nudge)
@@ -395,6 +434,30 @@ function AppShell() {
               >
                 🇺🇸 English
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {updating && (
+        <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm">
+          <div className="animate-scale-in flex w-full max-w-sm flex-col items-center rounded-2xl border border-border bg-surface p-8 text-center shadow-2xl shadow-black/50">
+            <Mascot mood="hyped" size={80} />
+            <h2 className="mt-4 text-lg font-semibold tracking-tight text-text">
+              {t('up.installing')} <span className="font-mono text-accent">v{updating.version}</span>
+            </h2>
+            <p className="mt-1 text-xs text-text-faint">{t('up.installing.sub')}</p>
+            <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-bg">
+              <div
+                className={`h-full rounded-full bg-accent ${updating.pct === null ? 'animate-pulse' : ''}`}
+                style={{
+                  width: `${updating.pct ?? 15}%`,
+                  transition: 'width 300ms ease',
+                }}
+              />
+            </div>
+            <div className="mt-2 font-mono text-xs tabular-nums text-text-dim">
+              {updating.pct === null ? '…' : `${Math.round(updating.pct)}%`}
             </div>
           </div>
         </div>
