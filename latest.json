@@ -1,4 +1,10 @@
-{
-  "version": "0.2.0",
-  "url": "https://github.com/brgamesjao-blip/locked-in/releases/latest"
+﻿{
+    "version":  "0.2.0",
+    "pub_date":  "2026-07-09T06:12:06Z",
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSM3hTOHVTbDg2VTEvMHd4MnZBY2gzL2NSNUw4SVlwRUJDOVFjdmFpeVdVMDVNVW9MMGhHMS9Sem5DaytWY2hQOUtXcjg5MVBUWE1ZbjZPeW5oZHlsU1RjamtNaWtyeGdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTc3NDg0CWZpbGU6TG9ja2VkIEluXzAuMi4wX3g2NC1zZXR1cC5leGUKS0FaVWNMVElCN2M0RnE4TTdscTh2SG5PREZHcWNzVXdPWXZwdXRyR3FjUnJWUEY1ckxQNFBLbUhYUnJ3WXRWd3dKek5UUTNkNnJxdVhLak9FM1NZQ2c9PQo=",
+                                             "url":  "https://github.com/juannastaken/locked-in/releases/download/v0.2.0/Locked.In_0.2.0_x64-setup.exe"
+                                         }
+                  }
 }
