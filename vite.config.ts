@@ -8,6 +8,10 @@ const host = process.env.TAURI_DEV_HOST
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   clearScreen: false,
+  // excalidraw reads process.env at runtime — without this the canvas window crashes
+  define: {
+    'process.env.IS_PREACT': JSON.stringify('false'),
+  },
   server: {
     port: 1420,
     strictPort: true,

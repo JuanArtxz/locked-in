@@ -27,6 +27,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
   const { pushToast } = useToast();
   const [mode, setMode] = useState<'week' | 'month'>('week');
   const [weekOffset, setWeekOffset] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [breaks, setBreaks] = useState<Break[]>([]);
@@ -57,6 +58,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
   const weekDays = rangeDays;
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
       db.listSessions({
         fromIso: new Date(rangeStart + 'T00:00:00').toISOString(),
@@ -70,7 +72,8 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
         setBreaks(b.filter((br) => dateKey(br.started_at) < rangeEndExclusive));
         setHistoryTotals(new Map(totals.map((t) => [t.date, t.total_sec])));
       })
-      .catch((err) => onError(String(err)));
+      .catch((err) => onError(String(err)))
+      .finally(() => setLoading(false));
   }, [rangeStart, rangeEndExclusive, onError, refreshKey]);
 
   const daySec = (key: string) =>
@@ -367,9 +370,21 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
           </div>
         </div>
 
-        {mode === 'month' && (
-          <div className="rounded-2xl border border-border bg-surface p-4">
-            <div className="flex h-32 items-end gap-[3px]">
+        {/* fixed-height stage: week rows, month bars and the loading skeleton all
+            share the exact same box, so switching modes never shifts the page */}
+        <div className="h-[300px]">
+        {loading && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-surface">
+            <div className="flex gap-1.5">
+              <span className="animate-pulse-dot h-2.5 w-2.5 bg-accent" />
+              <span className="animate-pulse-dot h-2.5 w-2.5 bg-accent" style={{ animationDelay: '0.2s' }} />
+              <span className="animate-pulse-dot h-2.5 w-2.5 bg-accent" style={{ animationDelay: '0.4s' }} />
+            </div>
+          </div>
+        )}
+        {!loading && mode === 'month' && (
+          <div className="animate-fade-in flex h-full flex-col rounded-2xl border border-border bg-surface p-4">
+            <div className="flex min-h-0 flex-1 items-end gap-[3px]">
               {rangeDays.map((day) => {
                 const sec = daySec(day);
                 const max = Math.max(1, ...rangeDays.map((d) => daySec(d)));
@@ -407,8 +422,8 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
           </div>
         )}
 
-        {mode === 'week' && (
-        <div className="space-y-1.5 rounded-2xl border border-border bg-surface p-4">
+        {!loading && mode === 'week' && (
+        <div className="animate-fade-in h-full space-y-1.5 overflow-hidden rounded-2xl border border-border bg-surface p-4">
           <div className="flex items-center gap-3 pb-1">
             <div className="w-9 shrink-0" />
             <div className="relative h-3 min-w-0 flex-1">
@@ -484,6 +499,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
           })}
         </div>
         )}
+        </div>
 
         {topApps.length > 0 && (
           <section>

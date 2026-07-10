@@ -930,6 +930,23 @@ fn import_ref_image_b64(app: tauri::AppHandle, data: String, ext: String) -> Res
   Ok(target.display().to_string())
 }
 
+/// Persists the Canvas Mode (Excalidraw) scene as JSON in the app config dir.
+#[tauri::command]
+fn save_canvas(app: tauri::AppHandle, data: String) -> Result<(), String> {
+  let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+  std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+  std::fs::write(dir.join("canvas.json"), data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_canvas(app: tauri::AppHandle) -> Result<String, String> {
+  let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+  match std::fs::read_to_string(dir.join("canvas.json")) {
+    Ok(s) => Ok(s),
+    Err(_) => Ok(String::new()),
+  }
+}
+
 /// Deletes a stored refboard image file (only inside the refboard folder).
 #[tauri::command]
 fn delete_ref_image(app: tauri::AppHandle, path: String) -> Result<(), String> {
@@ -1154,7 +1171,9 @@ pub fn run() {
       show_update_popup,
       import_ref_image,
       import_ref_image_b64,
-      delete_ref_image
+      delete_ref_image,
+      save_canvas,
+      load_canvas
     ])
     .setup(|app| {
       // fix dbs coming from legacy installers BEFORE the frontend loads the db
