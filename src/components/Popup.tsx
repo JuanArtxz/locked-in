@@ -217,7 +217,9 @@ export function Popup() {
   // mascot quote — pixel speech bubble to the mascot's left
   if (payload.kind === 'quote') {
     const q = quote ?? randomQuote();
-    const txt = payload.lang === 'en' ? q.en : q.pt;
+    const en = payload.lang === 'en';
+    const txt = en ? q.en : q.pt;
+    const author = en ? (q.authorEn ?? q.author) : q.author;
     return (
       <div className="flex h-screen w-screen items-end justify-end p-2">
         <button
@@ -230,7 +232,7 @@ export function Popup() {
           <div className="flex items-end gap-0">
             <div className="pixel-bubble animate-bubble-pop min-w-0 flex-1">
               <p className="text-[14px] font-medium leading-snug text-text">“{txt}”</p>
-              <p className="mt-1.5 text-right font-mono text-[11px] text-accent">— {q.author}</p>
+              <p className="mt-1.5 text-right font-mono text-[11px] text-accent">— {author}</p>
             </div>
             <div className="pixel-bubble-tail" />
             <div className="shrink-0 pb-1">
