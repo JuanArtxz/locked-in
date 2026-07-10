@@ -89,6 +89,7 @@ export const QUOTES: Quote[] = [
   { pt: 'Foco no passo. A montanha se resolve sozinha.', en: 'Focus on the step. The mountain takes care of itself.', author: '—', mood: 'think' },
   { pt: 'Você não precisa de mais tempo. Precisa de mais foco.', en: "You don't need more time. You need more focus.", author: '—', mood: 'focus' },
   { pt: 'Termina o que começou.', en: 'Finish what you started.', author: '—', mood: 'angry' },
+  { pt: 'que privilégio é lutar com o trabalho que você um dia rezou pra ter.', en: 'what a privilege it is to struggle with the work you once prayed for.', author: 'Você mesmo', authorEn: 'Yourself', mood: 'happy' },
 ];
 
 export function randomQuote(): Quote {
