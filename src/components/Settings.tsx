@@ -346,6 +346,20 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
           </Field>
         </Section>
 
+        <Section title={t('set.system')}>
+          <Field label={t('set.autostart')} hint={t('set.autostart.hint')}>
+            <Toggle
+              checked={settings.autostart_enabled}
+              onChange={(v) => {
+                update('autostart_enabled', v);
+                invoke('set_autostart', { enabled: v }).catch((err) =>
+                  pushToast(String(err), 'error'),
+                );
+              }}
+            />
+          </Field>
+        </Section>
+
         <Section title={t('set.data')}>
           <div className="flex items-center justify-between px-4 py-3.5">
             <div>

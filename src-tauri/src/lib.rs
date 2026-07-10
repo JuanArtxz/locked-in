@@ -853,6 +853,33 @@ fn set_tray_status(app: tauri::AppHandle, tooltip: String) {
   }
 }
 
+/// Start-with-Windows via the HKCU Run key — written directly so the exe path
+/// is always the current one and properly quoted (the autostart plugin choked
+/// on paths with spaces). `--minimized` makes boot launches start in the tray.
+#[tauri::command]
+fn set_autostart(enabled: bool) -> Result<(), String> {
+  use winreg::enums::{HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE};
+  use winreg::RegKey;
+  let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+  let run = hkcu
+    .open_subkey_with_flags(
+      r"Software\Microsoft\Windows\CurrentVersion\Run",
+      KEY_SET_VALUE | KEY_QUERY_VALUE,
+    )
+    .map_err(|e| e.to_string())?;
+  if enabled {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let value = format!("\"{}\" --minimized", exe.display());
+    run
+      .set_value("Locked In", &value)
+      .map_err(|e| e.to_string())?;
+  } else {
+    // deleting a value that isn't there is fine
+    let _ = run.delete_value("Locked In");
+  }
+  Ok(())
+}
+
 /// Rebuilds the tray menu in the chosen language.
 #[tauri::command]
 fn set_tray_lang(app: tauri::AppHandle, lang: String) -> Result<(), String> {
@@ -1021,6 +1048,7 @@ pub fn run() {
       insta_snooze,
       close_insta_tab,
       show_main_window,
+      set_autostart,
       sync_watchers,
       nudge_ack,
       test_checkin,
@@ -1092,6 +1120,12 @@ pub fn run() {
         .build(app)?;
 
       let window = app.get_webview_window("main").unwrap();
+
+      // launched by Windows startup (--minimized): live in the tray only
+      if std::env::args().any(|a| a == "--minimized") {
+        let _ = window.hide();
+      }
+
       let window_clone = window.clone();
       window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {

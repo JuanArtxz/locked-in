@@ -83,6 +83,14 @@ function AppShell() {
     return () => window.clearTimeout(id);
   }, []);
 
+  // keep the Run-key entry pointing at the current exe after updates
+  const autostartApplied = useRef(false);
+  useEffect(() => {
+    if (autostartApplied.current || !settingsHook.settings?.autostart_enabled) return;
+    autostartApplied.current = true;
+    invoke('set_autostart', { enabled: true }).catch(() => {});
+  }, [settingsHook.settings?.autostart_enabled]);
+
   // auto-update: check on boot + every 6h → corner popup → one click downloads,
   // installs with a progress screen and relaunches into the new version
   const [updating, setUpdating] = useState<{ version: string; pct: number | null } | null>(null);

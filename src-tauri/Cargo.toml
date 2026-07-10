@@ -33,6 +33,7 @@ tauri-plugin-process = "2.3.1"
 # must ride the same libsqlite3-sys (0.30) that tauri-plugin-sql's sqlx already links
 rusqlite = "0.32"
 sha2 = "0.10.9"
+winreg = "0.56.0"
 
 [dependencies.windows]
 version = "0.61"

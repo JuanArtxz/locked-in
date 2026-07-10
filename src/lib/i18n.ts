@@ -289,6 +289,12 @@ const dict: Record<string, { pt: string; en: string }> = {
     pt: '10h num projeto, streaks, recordes',
     en: '10h on a project, streaks, records',
   },
+  'set.system': { pt: 'Sistema', en: 'System' },
+  'set.autostart': { pt: 'Iniciar com o Windows', en: 'Start with Windows' },
+  'set.autostart.hint': {
+    pt: 'abre em segundo plano (bandeja) quando o Windows liga — auto-track e check-ins já ficam de guarda',
+    en: 'starts in the background (tray) when Windows boots — auto-track and check-ins stand guard',
+  },
   'set.data': { pt: 'Dados', en: 'Data' },
   'set.export': { pt: 'Exportar tudo', en: 'Export everything' },
   'set.export.hint': {
