@@ -25,6 +25,7 @@ function addDays(key: string, n: number): string {
 
 export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
   const { pushToast } = useToast();
+  const [mode, setMode] = useState<'week' | 'month'>('week');
   const [weekOffset, setWeekOffset] = useState(0);
   const [sharing, setSharing] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -34,25 +35,43 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
   const today = todayKey();
   const currentWeekStart = weekStartOf(today);
   const weekStart = addDays(currentWeekStart, -7 * weekOffset);
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const weekEndExclusive = addDays(weekStart, 7);
+
+  function monthStartKey(offset: number): string {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(1);
+    d.setMonth(d.getMonth() - offset);
+    return localDayKey(d);
+  }
+
+  const rangeStart = mode === 'week' ? weekStart : monthStartKey(weekOffset);
+  const rangeDays =
+    mode === 'week'
+      ? Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+      : (() => {
+          const d0 = new Date(rangeStart + 'T00:00:00');
+          const n = new Date(d0.getFullYear(), d0.getMonth() + 1, 0).getDate();
+          return Array.from({ length: n }, (_, i) => addDays(rangeStart, i));
+        })();
+  const rangeEndExclusive = addDays(rangeStart, rangeDays.length);
+  const weekDays = rangeDays;
 
   useEffect(() => {
     Promise.all([
       db.listSessions({
-        fromIso: new Date(weekStart + 'T00:00:00').toISOString(),
-        toIso: new Date(weekEndExclusive + 'T00:00:00').toISOString(),
+        fromIso: new Date(rangeStart + 'T00:00:00').toISOString(),
+        toIso: new Date(rangeEndExclusive + 'T00:00:00').toISOString(),
       }),
-      db.listBreaksSince(new Date(weekStart + 'T00:00:00').toISOString()),
+      db.listBreaksSince(new Date(rangeStart + 'T00:00:00').toISOString()),
       db.getDailyTotals(new Date(Date.now() - 70 * DAY_MS).toISOString()),
     ])
       .then(([s, b, totals]) => {
         setSessions(s);
-        setBreaks(b.filter((br) => dateKey(br.started_at) < weekEndExclusive));
+        setBreaks(b.filter((br) => dateKey(br.started_at) < rangeEndExclusive));
         setHistoryTotals(new Map(totals.map((t) => [t.date, t.total_sec])));
       })
       .catch((err) => onError(String(err)));
-  }, [weekStart, weekEndExclusive, onError, refreshKey]);
+  }, [rangeStart, rangeEndExclusive, onError, refreshKey]);
 
   const daySec = (key: string) =>
     sessions
@@ -61,7 +80,8 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
 
   const weekTotal = weekDays.reduce((acc, d) => acc + daySec(d), 0);
 
-  // average of the 8 previous full weeks (from daily totals history)
+  // average of the 8 previous full weeks (from daily totals history);
+  // month mode compares against the previous month instead
   let prevWeeksSum = 0;
   let prevWeeksCount = 0;
   for (let w = 1; w <= 8; w++) {
@@ -79,8 +99,17 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
     }
   }
   const avgWeekSec = prevWeeksCount > 0 ? prevWeeksSum / prevWeeksCount : 0;
-  const vsAvgPct =
+  let vsAvgPct: number | null =
     avgWeekSec > 0 ? Math.round(((weekTotal - avgWeekSec) / avgWeekSec) * 100) : null;
+  if (mode === 'month') {
+    const prevStart = monthStartKey(weekOffset + 1);
+    const prevEnd = rangeStart;
+    let prevTotal = 0;
+    for (const [key, sec] of historyTotals) {
+      if (key >= prevStart && key < prevEnd) prevTotal += sec;
+    }
+    vsAvgPct = prevTotal > 0 ? Math.round(((weekTotal - prevTotal) / prevTotal) * 100) : null;
+  }
 
   // per-weekday average over the previous 8 weeks
   function weekdayAvg(dayIndex: number): number {
@@ -173,13 +202,23 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
       const settings = await db.getAllSettings();
       const blob = await generateWeekCard({
         weekLabel,
+        subtitle: mode === 'week' ? t('card.subtitle') : t('card.subtitle.month'),
         totalSec: weekTotal,
         days: weekDays.map((day, i) => ({
-          label: WEEKDAY_NAMES[i],
+          label:
+            mode === 'week'
+              ? WEEKDAY_NAMES[i]
+              : i === 0 || (i + 1) % 5 === 0
+                ? String(i + 1)
+                : '',
           sec: daySec(day),
           isToday: day === today,
         })),
-        bestDayLabel: bestDayKey ? WEEKDAY_NAMES[weekDays.indexOf(bestDayKey)] : null,
+        bestDayLabel: bestDayKey
+          ? mode === 'week'
+            ? WEEKDAY_NAMES[weekDays.indexOf(bestDayKey)]
+            : t('month.day', String(parseInt(bestDayKey.slice(8, 10), 10)))
+          : null,
         bestDaySec,
         blocks: sessions.length,
         avgRating: weekAvgRating,
@@ -200,7 +239,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `locked-in-week-${weekStart}.png`;
+      a.download = `locked-in-${mode}-${rangeStart}.png`;
       a.click();
       URL.revokeObjectURL(url);
       pushToast(copied ? t('card.done.copied') : t('card.done'), 'info');
@@ -213,11 +252,20 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
 
   const WEEKDAY_NAMES = weekdayShort();
   const weekLabel =
-    weekOffset === 0
-      ? t('week.this')
-      : weekOffset === 1
-        ? t('week.last')
-        : `${new Date(weekStart + 'T00:00:00').toLocaleDateString(dateLocale(), { day: '2-digit', month: '2-digit' })} – ${new Date(addDays(weekStart, 6) + 'T00:00:00').toLocaleDateString(dateLocale(), { day: '2-digit', month: '2-digit' })}`;
+    mode === 'month'
+      ? weekOffset === 0
+        ? t('month.this')
+        : weekOffset === 1
+          ? t('month.last')
+          : new Date(rangeStart + 'T00:00:00').toLocaleDateString(dateLocale(), {
+              month: 'long',
+              year: 'numeric',
+            })
+      : weekOffset === 0
+        ? t('week.this')
+        : weekOffset === 1
+          ? t('week.last')
+          : `${new Date(weekStart + 'T00:00:00').toLocaleDateString(dateLocale(), { day: '2-digit', month: '2-digit' })} – ${new Date(addDays(weekStart, 6) + 'T00:00:00').toLocaleDateString(dateLocale(), { day: '2-digit', month: '2-digit' })}`;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -239,13 +287,32 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
             >
               ›
             </button>
-            <h1 className="ml-2 text-lg font-semibold tracking-tight text-text">{weekLabel}</h1>
+            <div className="ml-1 flex items-center gap-0.5 rounded-full border border-border bg-surface p-0.5">
+              {(['week', 'month'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMode(m);
+                    setWeekOffset(0);
+                  }}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    mode === m ? 'bg-surface-hover text-text shadow-sm' : 'text-text-dim hover:text-text'
+                  }`}
+                >
+                  {t(m === 'week' ? 'range.week' : 'range.month')}
+                </button>
+              ))}
+            </div>
+            <h1 className="ml-2 text-lg font-semibold capitalize tracking-tight text-text">
+              {weekLabel}
+            </h1>
             <button
               type="button"
               onClick={shareCard}
               disabled={sharing || weekTotal === 0}
               title={t('card.btn.hint')}
-              className="ml-1 rounded-full border border-border px-3 py-1 text-xs text-text-dim hover:border-accent/50 hover:bg-accent-dim hover:text-accent disabled:opacity-30"
+              className="ml-2 flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-[13px] font-bold text-bg shadow-lg shadow-accent/20 hover:brightness-110 disabled:opacity-30 disabled:shadow-none"
             >
               {sharing ? '…' : t('card.btn')}
             </button>
@@ -279,7 +346,11 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
           </div>
           <div className="rounded-2xl border border-border bg-surface p-4">
             <div className="font-mono text-xl font-medium tabular-nums text-text">
-              {bestDayKey ? WEEKDAY_NAMES[weekDays.indexOf(bestDayKey)] : '—'}
+              {bestDayKey
+                ? mode === 'week'
+                  ? WEEKDAY_NAMES[weekDays.indexOf(bestDayKey)]
+                  : t('month.day', String(parseInt(bestDayKey.slice(8, 10), 10)))
+                : '—'}
               {bestDayKey && (
                 <span className="ml-1.5 text-xs text-text-faint">
                   {formatDurationShort(bestDaySec)}
@@ -296,6 +367,47 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
           </div>
         </div>
 
+        {mode === 'month' && (
+          <div className="rounded-2xl border border-border bg-surface p-4">
+            <div className="flex h-32 items-end gap-[3px]">
+              {rangeDays.map((day) => {
+                const sec = daySec(day);
+                const max = Math.max(1, ...rangeDays.map((d) => daySec(d)));
+                const future = day > today;
+                return (
+                  <div
+                    key={day}
+                    title={`${new Date(day + 'T00:00:00').toLocaleDateString(dateLocale())} · ${sec > 0 ? formatDurationShort(sec) : '0'}`}
+                    className={`min-w-0 flex-1 rounded-t-[4px] ${
+                      day === today
+                        ? 'bg-accent'
+                        : sec > 0
+                          ? 'bg-accent/70'
+                          : future
+                            ? 'bg-transparent'
+                            : 'bg-surface-2'
+                    }`}
+                    style={{ height: `${Math.max(sec > 0 ? 6 : 2, (sec / max) * 100)}%` }}
+                  />
+                );
+              })}
+            </div>
+            <div className="mt-1.5 flex gap-[3px]">
+              {rangeDays.map((day, i) => (
+                <div
+                  key={day}
+                  className={`min-w-0 flex-1 text-center text-[9px] tabular-nums ${
+                    day === today ? 'font-semibold text-accent' : 'text-text-faint'
+                  }`}
+                >
+                  {i === 0 || (i + 1) % 5 === 0 ? i + 1 : ''}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {mode === 'week' && (
         <div className="space-y-1.5 rounded-2xl border border-border bg-surface p-4">
           <div className="flex items-center gap-3 pb-1">
             <div className="w-9 shrink-0" />
@@ -371,6 +483,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
             );
           })}
         </div>
+        )}
 
         {topApps.length > 0 && (
           <section>

@@ -271,6 +271,44 @@ textarea {
   display: none;
 }
 
+/* pixel speech bubble for the mascot's quotes — chunky stepped corners */
+.pixel-bubble {
+  position: relative;
+  background: var(--color-surface);
+  border: 3px solid var(--color-accent);
+  padding: 14px 16px;
+  box-shadow:
+    0 0 0 3px var(--color-bg),
+    6px 6px 0 rgba(0, 0, 0, 0.45);
+  image-rendering: pixelated;
+}
+.pixel-bubble-tail {
+  width: 0;
+  height: 0;
+  margin-bottom: 22px;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 14px solid var(--color-accent);
+  flex-shrink: 0;
+}
+@keyframes bubble-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-bubble-pop {
+  animation: bubble-pop 0.35s steps(4, end) both;
+  transform-origin: right bottom;
+}
+
 /* corner popup: pulsing accent glow so the check-in is impossible to miss */
 .popup-glow {
   animation: popup-glow 2.4s ease-in-out infinite;

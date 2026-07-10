@@ -635,6 +635,8 @@ const SETTINGS_DEFAULTS: Settings = {
   autotrack_enabled: false,
   autotrack_apps: 'roblox studio, visual studio code, blender, photoshop, figma',
   autotrack_show_overlay: true,
+  quotes_enabled: false,
+  quotes_interval_min: 30,
 };
 
 // ---------- reference board ----------

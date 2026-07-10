@@ -4,6 +4,8 @@ import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import * as db from '../lib/db';
 import { setLang, t } from '../lib/i18n';
+import { randomQuote } from '../lib/quotes';
+import type { Quote } from '../lib/quotes';
 import { playCheckinChime, playNudgeSound } from '../lib/sound';
 import type { PopupPayload } from '../types';
 import { Mascot } from './Mascot';
@@ -27,6 +29,7 @@ function hexToRgba(hex: string, alpha: number): string {
 export function Popup() {
   const [payload, setPayload] = useState<PopupPayload | null>(null);
   const [text, setText] = useState('');
+  const [quote, setQuote] = useState<Quote | null>(null);
   const [leaving, setLeaving] = useState(false);
   const answeredRef = useRef(false);
   const autoTimer = useRef<number | null>(null);
@@ -44,6 +47,7 @@ export function Popup() {
     listen<PopupPayload>('popup:show', (e) => {
       setPayload(e.payload);
       setText('');
+      if (e.payload.kind === 'quote') setQuote(randomQuote());
       setLeaving(false);
       answeredRef.current = false;
     }).then((u) => {
@@ -115,9 +119,11 @@ export function Popup() {
         ? CHECKIN_AUTO_SKIP_MS
         : payload.kind === 'update'
           ? 60_000
-          : payload.kind === 'nudge'
-            ? NUDGE_AUTO_HIDE_MS
-            : NOTICE_AUTO_HIDE_MS;
+          : payload.kind === 'quote'
+            ? 14_000
+            : payload.kind === 'nudge'
+              ? NUDGE_AUTO_HIDE_MS
+              : NOTICE_AUTO_HIDE_MS;
     autoTimer.current = window.setTimeout(() => {
       if (payload.kind === 'checkin') answerCheckin(true);
       else hide();
@@ -204,6 +210,34 @@ export function Popup() {
             {t('ci.popup.hint.skip')}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // mascot quote — pixel speech bubble to the mascot's left
+  if (payload.kind === 'quote') {
+    const q = quote ?? randomQuote();
+    const txt = payload.lang === 'en' ? q.en : q.pt;
+    return (
+      <div className="flex h-screen w-screen items-end justify-end p-2">
+        <button
+          type="button"
+          onClick={() => hide()}
+          className={`w-full cursor-pointer bg-transparent text-left ${
+            leaving ? 'animate-popup-out' : 'animate-popup-in'
+          }`}
+        >
+          <div className="flex items-end gap-0">
+            <div className="pixel-bubble animate-bubble-pop min-w-0 flex-1">
+              <p className="text-[14px] font-medium leading-snug text-text">“{txt}”</p>
+              <p className="mt-1.5 text-right font-mono text-[11px] text-accent">— {q.author}</p>
+            </div>
+            <div className="pixel-bubble-tail" />
+            <div className="shrink-0 pb-1">
+              <Mascot mood="happy" size={62} />
+            </div>
+          </div>
+        </button>
       </div>
     );
   }

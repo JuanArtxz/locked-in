@@ -250,6 +250,34 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
           </div>
         </Section>
 
+        <Section title={t('set.quotes')}>
+          <Field label={t('set.quotes.enable')} hint={t('set.quotes.enable.hint')}>
+            <Toggle
+              checked={settings.quotes_enabled}
+              onChange={(v) => update('quotes_enabled', v)}
+            />
+          </Field>
+          <Field label={t('set.quotes.interval')} hint={t('set.quotes.interval.hint')}>
+            <Stepper
+              value={settings.quotes_interval_min}
+              min={5}
+              max={240}
+              step={5}
+              suffix="min"
+              onChange={(v) => update('quotes_interval_min', v)}
+            />
+          </Field>
+          <Field label={t('set.checkin.test')} hint={t('set.quotes.test.hint')}>
+            <button
+              type="button"
+              onClick={() => invoke('test_quote').catch(() => {})}
+              className="rounded-lg border border-border px-4 py-2 text-[13px] font-medium text-text hover:border-accent/50 hover:bg-accent-dim hover:text-accent"
+            >
+              {t('set.checkin.test.btn')}
+            </button>
+          </Field>
+        </Section>
+
         <Section title={t('set.refboard')}>
           <Field label={t('set.refboard.enable')} hint={t('set.refboard.hint')}>
             <Toggle

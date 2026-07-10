@@ -84,6 +84,8 @@ export interface Settings {
   autotrack_enabled: boolean;
   autotrack_apps: string;
   autotrack_show_overlay: boolean;
+  quotes_enabled: boolean;
+  quotes_interval_min: number;
 }
 
 /** One image pinned on the PureRef-style reference board. */
@@ -177,6 +179,12 @@ export type PopupPayload =
       kind: 'update';
       version: string;
       url: string;
+      lang: string;
+      sound: boolean;
+      accent: string;
+    }
+  | {
+      kind: 'quote';
       lang: string;
       sound: boolean;
       accent: string;

@@ -164,6 +164,9 @@ struct WatcherCfg {
   /// auto-start a session when a whitelisted work app gains focus
   autotrack_enabled: bool,
   autotrack_apps: String,
+  /// mascot motivational quotes every N minutes
+  quotes_enabled: bool,
+  quotes_interval_min: u64,
   session_active: bool,
   /// true while on break or paused — nudges stay quiet
   suspended: bool,
@@ -192,6 +195,8 @@ struct WatcherState {
   /// edge triggers for auto-pause (left work apps 10s+) / auto-resume (back)
   away_fired: bool,
   back_fired: bool,
+  /// seconds until the next mascot quote
+  quote_countdown_sec: u64,
 }
 
 fn fmt_min(total_min: i64) -> String {
@@ -419,6 +424,34 @@ fn popup_watcher(handle: tauri::AppHandle) {
       .and_then(|w| w.is_visible().ok())
       .unwrap_or(false);
 
+    // ---- mascot quotes on a timer (the popup picks the phrase itself) ----
+    if cfg.quotes_enabled {
+      let interval_secs = cfg.quotes_interval_min.clamp(1, 24 * 60) * 60;
+      if st.quote_countdown_sec == 0 || st.quote_countdown_sec > interval_secs {
+        st.quote_countdown_sec = interval_secs;
+      }
+      st.quote_countdown_sec = st.quote_countdown_sec.saturating_sub(delta);
+      if st.quote_countdown_sec == 0 {
+        if !popup_busy && idle_seconds() < 300 {
+          st.quote_countdown_sec = interval_secs;
+          fire_popup(
+            &handle,
+            serde_json::json!({
+              "kind": "quote",
+              "lang": cfg.lang,
+              "sound": false,
+              "accent": cfg.accent,
+            }),
+          );
+        } else {
+          // user away or popup in use — try again in a minute
+          st.quote_countdown_sec = 60;
+        }
+      }
+    } else {
+      st.quote_countdown_sec = 0;
+    }
+
     if cfg.nudge_enabled
       && !cfg.suspended
       && cooldown_ok
@@ -479,6 +512,21 @@ fn test_checkin(app: tauri::AppHandle, state: tauri::State<'_, Mutex<WatcherStat
       "sound": cfg.sound,
       "accent": cfg.accent,
       "test": true,
+    }),
+  );
+}
+
+/// Shows a mascot quote right now (preview from Settings).
+#[tauri::command]
+fn test_quote(app: tauri::AppHandle, state: tauri::State<'_, Mutex<WatcherState>>) {
+  let cfg = state.lock().unwrap().cfg.clone();
+  fire_popup(
+    &app,
+    serde_json::json!({
+      "kind": "quote",
+      "lang": cfg.lang,
+      "sound": false,
+      "accent": cfg.accent,
     }),
   );
 }
@@ -1101,6 +1149,7 @@ pub fn run() {
       nudge_ack,
       test_checkin,
       test_nudge,
+      test_quote,
       show_notice,
       show_update_popup,
       import_ref_image,

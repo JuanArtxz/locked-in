@@ -164,6 +164,8 @@ function AppShell() {
       nudge_apps: s.nudge_apps,
       autotrack_enabled: s.autotrack_enabled,
       autotrack_apps: s.autotrack_apps,
+      quotes_enabled: s.quotes_enabled,
+      quotes_interval_min: s.quotes_interval_min,
       session_active: focus.phase === 'focusing',
       suspended: focus.phase === 'paused' || focus.phase === 'break',
       lang: s.language === 'en' ? 'en' : 'pt',

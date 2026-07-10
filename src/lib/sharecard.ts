@@ -6,8 +6,10 @@ import { t } from './i18n';
 
 export interface WeekCardData {
   weekLabel: string;
+  /** already-translated subtitle under the big number */
+  subtitle: string;
   totalSec: number;
-  /** mon..sun, seconds per day */
+  /** days in the range (7 for weeks, 28–31 for months); empty label = no tick */
   days: { label: string; sec: number; isToday: boolean }[];
   bestDayLabel: string | null;
   bestDaySec: number;
@@ -145,7 +147,7 @@ export async function generateWeekCard(d: WeekCardData): Promise<Blob> {
   ctx.shadowBlur = 0;
   ctx.font = `400 26px ${sans}`;
   ctx.fillStyle = DIM;
-  ctx.fillText(t('card.subtitle'), 66, 316);
+  ctx.fillText(d.subtitle, 66, 316);
 
   // vs average pill
   if (d.vsAvgPct !== null) {
@@ -208,10 +210,12 @@ export async function generateWeekCard(d: WeekCardData): Promise<Blob> {
   drawMascot(ctx, chartX + chartW / 2 - mascotW / 2, 160, px, hype);
 
   const maxSec = Math.max(1, ...d.days.map((x) => x.sec));
-  const barW = 34;
-  const gap = (chartW - 7 * barW) / 6;
+  const n = d.days.length;
+  const gap = n > 10 ? 4 : 13;
+  const barW = (chartW - (n - 1) * gap) / n;
+  const radius = Math.min(7, barW / 2);
   d.days.forEach((day, i) => {
-    const bh = Math.max(6, (day.sec / maxSec) * chartH);
+    const bh = Math.max(day.sec > 0 ? 6 : 4, (day.sec / maxSec) * chartH);
     const bx = chartX + i * (barW + gap);
     const by = chartY + chartH - bh;
     const grad = ctx.createLinearGradient(0, by, 0, by + bh);
@@ -222,12 +226,14 @@ export async function generateWeekCard(d: WeekCardData): Promise<Blob> {
     } else {
       ctx.fillStyle = '#1c1c20';
     }
-    rr(ctx, bx, by, barW, bh, 7);
+    rr(ctx, bx, by, barW, bh, radius);
     ctx.fill();
-    ctx.fillStyle = day.isToday ? ACCENT : FAINT;
-    ctx.font = `500 15px ${mono}`;
-    const lw = ctx.measureText(day.label).width;
-    ctx.fillText(day.label, bx + barW / 2 - lw / 2, chartY + chartH + 28);
+    if (day.label) {
+      ctx.fillStyle = day.isToday ? ACCENT : FAINT;
+      ctx.font = `500 ${n > 10 ? 12 : 15}px ${mono}`;
+      const lw = ctx.measureText(day.label).width;
+      ctx.fillText(day.label, bx + barW / 2 - lw / 2, chartY + chartH + 28);
+    }
   });
 
   // ---- footer ----

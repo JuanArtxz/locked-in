@@ -229,6 +229,21 @@ const dict: Record<string, { pt: string; en: string }> = {
     pt: 'separa por vírgula — nome do app ou pedaço do título da janela',
     en: 'comma-separated — app names or window-title fragments',
   },
+  'set.quotes': { pt: 'Frases do mascote', en: 'Mascot quotes' },
+  'set.quotes.enable': { pt: 'Ativar', en: 'Enable' },
+  'set.quotes.enable.hint': {
+    pt: 'o mascote aparece no canto com uma frase motivacional num balão pixelado',
+    en: 'the mascot shows up in the corner with a motivational quote in a pixel bubble',
+  },
+  'set.quotes.interval': { pt: 'Intervalo', en: 'Interval' },
+  'set.quotes.interval.hint': {
+    pt: 'de quanto em quanto tempo ele aparece',
+    en: 'how often it shows up',
+  },
+  'set.quotes.test.hint': {
+    pt: 'mostra uma frase agora, só pra ver o balão',
+    en: 'shows a quote right now, just to see the bubble',
+  },
   'set.refboard': { pt: 'Ref Board', en: 'Ref Board' },
   'set.refboard.enable': { pt: 'Ativar', en: 'Enable' },
   'set.refboard.hint': {
@@ -414,6 +429,13 @@ const dict: Record<string, { pt: string; en: string }> = {
   'week.apps': { pt: 'Onde a semana foi', en: 'Where the week went' },
   'week.dayavgtitle': { pt: 'sua média de {0}: {1}', en: 'your {0} average: {1}' },
 
+  // week/month range switch
+  'range.week': { pt: 'Semana', en: 'Week' },
+  'range.month': { pt: 'Mês', en: 'Month' },
+  'month.this': { pt: 'Esse mês', en: 'This month' },
+  'month.last': { pt: 'Mês passado', en: 'Last month' },
+  'month.day': { pt: 'dia {0}', en: 'day {0}' },
+
   // week share card
   'card.btn': { pt: '📤 cartão', en: '📤 card' },
   'card.btn.hint': {
@@ -421,6 +443,7 @@ const dict: Record<string, { pt: string; en: string }> = {
     en: 'renders a shareable image of the week',
   },
   'card.subtitle': { pt: 'focadas essa semana', en: 'focused this week' },
+  'card.subtitle.month': { pt: 'focadas esse mês', en: 'focused this month' },
   'card.vsavg': { pt: 'vs sua média', en: 'vs your average' },
   'card.bestday': { pt: 'melhor dia', en: 'best day' },
   'card.blocks': { pt: 'blocos', en: 'blocks' },
