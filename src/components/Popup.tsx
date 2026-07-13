@@ -11,7 +11,7 @@ import type { PopupPayload } from '../types';
 import { Mascot } from './Mascot';
 import type { MascotMood } from './Mascot';
 
-const CHECKIN_AUTO_SKIP_MS = 75_000;
+const CHECKIN_AUTO_SKIP_MS = 15 * 60_000;
 const NUDGE_AUTO_HIDE_MS = 18_000;
 const NOTICE_AUTO_HIDE_MS = 12_000;
 
@@ -28,7 +28,9 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export function Popup() {
   const [payload, setPayload] = useState<PopupPayload | null>(null);
+  const payloadRef = useRef<PopupPayload | null>(null);
   const [text, setText] = useState('');
+  const textRef = useRef('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [leaving, setLeaving] = useState(false);
   const answeredRef = useRef(false);
@@ -45,8 +47,19 @@ export function Popup() {
       .catch(() => {});
     let unlisten: (() => void) | undefined;
     listen<PopupPayload>('popup:show', (e) => {
+      // a new popup arriving over an unanswered check-in: resolve the old one
+      // first — saved if something was typed, skipped otherwise
+      const prev = payloadRef.current;
+      if (prev?.kind === 'checkin' && !prev.test && !answeredRef.current) {
+        const leftover = textRef.current.trim();
+        db.addHourlyLog(prev.day, prev.periodStart, prev.periodEnd, leftover || null, !leftover)
+          .then(() => emit('checkin:changed').catch(() => {}))
+          .catch(() => {});
+      }
+      payloadRef.current = e.payload;
       setPayload(e.payload);
       setText('');
+      textRef.current = '';
       if (e.payload.kind === 'quote') setQuote(randomQuote());
       setLeaving(false);
       answeredRef.current = false;
@@ -79,12 +92,14 @@ export function Popup() {
     if (!delayForExitAnim) {
       getCurrentWebviewWindow().hide().catch(() => {});
       setPayload(null);
+      payloadRef.current = null;
       return;
     }
     setLeaving(true);
     window.setTimeout(() => {
       getCurrentWebviewWindow().hide().catch(() => {});
       setPayload(null);
+      payloadRef.current = null;
       setLeaving(false);
     }, 260);
   }
@@ -110,24 +125,28 @@ export function Popup() {
     hide();
   }
 
-  // auto-close: unanswered check-in counts as skipped; nudges/notices just leave
-  useEffect(() => {
-    if (!payload) return;
+  // auto-close: an untouched check-in counts as skipped, but typing resets the
+  // clock and text left in the box gets SAVED, never thrown away
+  function armAutoClose(p: PopupPayload) {
     if (autoTimer.current) window.clearTimeout(autoTimer.current);
     const ms =
-      payload.kind === 'checkin'
+      p.kind === 'checkin'
         ? CHECKIN_AUTO_SKIP_MS
-        : payload.kind === 'update'
+        : p.kind === 'update'
           ? 60_000
-          : payload.kind === 'quote'
+          : p.kind === 'quote'
             ? 14_000
-            : payload.kind === 'nudge'
+            : p.kind === 'nudge'
               ? NUDGE_AUTO_HIDE_MS
               : NOTICE_AUTO_HIDE_MS;
     autoTimer.current = window.setTimeout(() => {
-      if (payload.kind === 'checkin') answerCheckin(true);
+      if (p.kind === 'checkin') answerCheckin(textRef.current.trim() === '');
       else hide();
     }, ms);
+  }
+  useEffect(() => {
+    if (!payload) return;
+    armAutoClose(payload);
     return () => {
       if (autoTimer.current) window.clearTimeout(autoTimer.current);
     };
@@ -171,7 +190,12 @@ export function Popup() {
             ref={textareaRef}
             autoFocus
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              textRef.current = e.target.value;
+              armAutoClose(payload); // typing keeps the popup alive
+            }}
+            onFocus={() => armAutoClose(payload)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
