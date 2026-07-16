@@ -885,6 +885,28 @@ const SNAPSHOT_TABLES = [
   'chat_conversations',
 ] as const;
 
+// Foreign keys: breaks.session_id → sessions, habit_logs.habit_id → habits.
+// DELETE children before parents; INSERT parents before children — otherwise
+// SQLite raises "FOREIGN KEY constraint failed" (code 787) on restore.
+const DELETE_ORDER = [
+  'breaks',
+  'habit_logs',
+  'sessions',
+  'habits',
+  'hourly_logs',
+  'milestones',
+  'chat_conversations',
+] as const;
+const INSERT_ORDER = [
+  'sessions',
+  'habits',
+  'breaks',
+  'habit_logs',
+  'hourly_logs',
+  'milestones',
+  'chat_conversations',
+] as const;
+
 export async function exportAll(): Promise<Snapshot> {
   return run('exportAll', async () => {
     const dbi = await getDb();
@@ -932,33 +954,41 @@ export async function importAll(snap: Snapshot): Promise<void> {
   return run('importAll', async () => {
     const dbi = await getDb();
 
-    // ---- phase 1: build + validate the whole plan, zero mutations ----
-    const plan: { sql: string; params: unknown[] }[] = [];
-    for (const table of SNAPSHOT_TABLES) {
+    // ---- phase 1: build + validate the plan per table, zero mutations ----
+    // grouped by table so inserts can run in FK-safe (parents-first) order
+    const planByTable = new Map<string, { sql: string; params: unknown[] }[]>();
+    for (const table of INSERT_ORDER) {
       const valid = await tableColumns(dbi, table);
       const rows = (snap as unknown as Record<string, Record<string, unknown>[]>)[table] ?? [];
-      if (!Array.isArray(rows)) continue;
-      for (const row of rows) {
-        if (!row || typeof row !== 'object') continue;
-        const cols = Object.keys(row).filter((c) => SAFE_IDENT.test(c) && valid.has(c));
-        if (cols.length === 0) continue;
-        const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
-        plan.push({
-          sql: `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`,
-          params: cols.map((c) => row[c]),
-        });
+      const stmts: { sql: string; params: unknown[] }[] = [];
+      if (Array.isArray(rows)) {
+        for (const row of rows) {
+          if (!row || typeof row !== 'object') continue;
+          const cols = Object.keys(row).filter((c) => SAFE_IDENT.test(c) && valid.has(c));
+          if (cols.length === 0) continue;
+          const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+          stmts.push({
+            sql: `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`,
+            params: cols.map((c) => row[c]),
+          });
+        }
       }
+      planByTable.set(table, stmts);
     }
     const settingsEntries = Object.entries(snap.settings ?? {}).filter(
       ([key]) => key !== 'anthropic_api_key' && SAFE_IDENT.test(key),
     );
 
-    // ---- phase 2: mutate (plan already proven valid against the schema) ----
-    for (const table of SNAPSHOT_TABLES) {
+    // ---- phase 2: mutate, honoring foreign keys ----
+    // wipe children before parents
+    for (const table of DELETE_ORDER) {
       await dbi.execute(`DELETE FROM ${table}`);
     }
-    for (const stmt of plan) {
-      await dbi.execute(stmt.sql, stmt.params);
+    // insert parents before children
+    for (const table of INSERT_ORDER) {
+      for (const stmt of planByTable.get(table) ?? []) {
+        await dbi.execute(stmt.sql, stmt.params);
+      }
     }
     for (const [key, value] of settingsEntries) {
       await dbi.execute(
