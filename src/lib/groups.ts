@@ -231,10 +231,30 @@ export async function maybeEndGroupJam(groupId: number): Promise<void> {
     .eq('group_id', groupId)
     .eq('in_jam', true);
   if ((data ?? []).length === 0) {
+    const { data: g } = await supabase
+      .from('groups')
+      .select('jam_started_at')
+      .eq('id', groupId)
+      .maybeSingle();
+    const startedAt = (g as { jam_started_at: string | null } | null)?.jam_started_at;
     await supabase
       .from('groups')
       .update({ jam_task: null, jam_started_at: null, jam_pomo: null })
       .eq('id', groupId);
+    // leave a memory of the session in the chat (language-neutral body)
+    if (startedAt) {
+      const min = Math.round(
+        Math.max(0, Date.now() - new Date(startedAt).getTime()) / 60_000,
+      );
+      if (min >= 5) {
+        const user = await currentUser();
+        if (user) {
+          await supabase
+            .from('group_messages')
+            .insert({ group_id: groupId, sender: user.id, kind: 'system', body: `🎧 JAM · ${min} min` });
+        }
+      }
+    }
   }
 }
 

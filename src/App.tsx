@@ -39,7 +39,7 @@ import type { Update } from '@tauri-apps/plugin-updater';
 import { setLang, t } from './lib/i18n';
 import { checkMilestones } from './lib/milestones';
 import { playChime } from './lib/sound';
-import { formatHms, todayKey } from './lib/time';
+import { formatDurationShort, formatHms, todayKey } from './lib/time';
 import { Mascot } from './components/Mascot';
 import type { OverlaySize, OverlayState } from './types';
 
@@ -1040,6 +1040,56 @@ function AppShell() {
     })();
   }, [refreshKey, signedIn]);
 
+  // ---- jam room data: members of MY jam with avatar/live info ----
+  const jamRoomMembers = focus.jam
+    ? focus.jam.members.map((u) => {
+        const isMe = u === social.state?.me?.username;
+        const friendRow = social.state?.friends.find((fr) => fr.username === u);
+        const groupmate = groups.list
+          .flatMap((g) => g.members)
+          .find((m) => m.username === u);
+        const userId = isMe
+          ? (social.state?.me?.user_id ?? null)
+          : (friendRow?.userId ?? groupmate?.user_id ?? null);
+        return {
+          username: u,
+          avatar: isMe
+            ? (social.state?.me?.avatar_b64 ?? null)
+            : (friendRow?.avatar ?? groupmate?.avatar ?? null),
+          userId,
+          isMe,
+          live: isMe ? true : userId ? socialLib.isLive(social.presence.get(userId)) : false,
+        };
+      })
+    : null;
+
+  const cheerMember = useCallback(
+    (userId: string) => {
+      socialLib
+        .sendPoke(userId, 'cheer')
+        .then((err) => {
+          if (err === 'rate') pushToast(t('poke.rate'), 'info');
+          else if (!err) pushToast(t('poke.sent'), 'info');
+        })
+        .catch(() => {});
+    },
+    [pushToast],
+  );
+
+  // "vocês focaram X juntos" — fires once when my jam dissolves (everyone
+  // left or I did), only for jams that actually lasted a while
+  const prevJamSummaryRef = useRef<{ startedAt: string } | null>(null);
+  useEffect(() => {
+    const cur =
+      focus.jam && focus.jam.members.length >= 2 ? { startedAt: focus.jam.startedAt } : null;
+    const prev = prevJamSummaryRef.current;
+    prevJamSummaryRef.current = cur;
+    if (prev && !cur) {
+      const sec = Math.max(0, (Date.now() - new Date(prev.startedAt).getTime()) / 1000);
+      if (sec >= 300) pushToast(t('jam.summary', formatDurationShort(sec)), 'info');
+    }
+  }, [focus.jam, pushToast]);
+
   // ---- group jam: shares the focus session + the shared display timer ----
   const startGroupJam = useCallback(
     (groupId: number, task: string, pomo: string | null = null) => {
@@ -1723,6 +1773,8 @@ function AppShell() {
               setTab('routine');
               setRoutineSub('habits');
             }}
+            jamRoom={jamRoomMembers}
+            onCheer={cheerMember}
           />
         )}
         {tab === 'routine' && (

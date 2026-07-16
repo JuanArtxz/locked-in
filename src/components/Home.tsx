@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { parsePomo } from '../hooks/useFocusSession';
 import type { UseFocusSession } from '../hooks/useFocusSession';
+import { JamRoom } from './JamRoom';
+import type { JamRoomMember } from './JamRoom';
 import * as db from '../lib/db';
 import type { DayStat } from '../lib/db';
 import { t } from '../lib/i18n';
@@ -17,6 +19,9 @@ interface HomeProps {
   onError: (message: string) => void;
   refreshKey: number;
   onOpenHabits: () => void;
+  /** members of my running jam with live/avatar info (null when not jamming) */
+  jamRoom: JamRoomMember[] | null;
+  onCheer: (userId: string) => void;
 }
 
 const BREAK_OPTIONS = [
@@ -25,7 +30,15 @@ const BREAK_OPTIONS = [
   { label: '15 min', sec: 15 * 60 },
 ];
 
-export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: HomeProps) {
+export function Home({
+  focus,
+  settings,
+  onError,
+  refreshKey,
+  onOpenHabits,
+  jamRoom,
+  onCheer,
+}: HomeProps) {
   const [task, setTask] = useState('');
   const [project, setProject] = useState('');
   const [projects, setProjects] = useState<string[]>([]);
@@ -156,15 +169,10 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
               {focus.activeSession.project}
             </span>
           )}
-          {focus.jam && focus.jam.members.length >= 2 && (
-            <span className="rounded-full border-2 border-accent bg-accent-dim px-3 py-0.5 text-xs font-bold text-accent">
-              🎧 JAM · {focus.jam.members.map((m) => `@${m}`).join(' ')}
-            </span>
-          )}
           {(() => {
-            // synced pomodoro chip — advisory only, derived from the shared clock
+            // solo pomodoro chip — the full JamRoom below takes over at 2+
             const p = parsePomo(focus.jam?.pomo);
-            if (!p || !focus.jam) return null;
+            if (!p || !focus.jam || (jamRoom && jamRoom.length >= 2)) return null;
             const cycle = p.workSec + p.breakSec;
             const pos = ((focus.displayElapsedSec % cycle) + cycle) % cycle;
             const inWork = pos < p.workSec;
@@ -182,6 +190,16 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
             );
           })()}
         </div>
+
+        {/* the living jam room — everyone in the session, rings + 🔥 */}
+        {jamRoom && jamRoom.length >= 2 && (
+          <JamRoom
+            members={jamRoom}
+            sharedSec={focus.displayElapsedSec}
+            pomo={focus.jam?.pomo ?? null}
+            onCheer={onCheer}
+          />
+        )}
 
         <div
           className={`font-mono text-[clamp(52px,11vw,96px)] font-medium leading-none tabular-nums tracking-tight ${

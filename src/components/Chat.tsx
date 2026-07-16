@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useToast } from '../hooks/useToast';
 import * as chat from '../lib/chat';
 import type { DecryptedMessage, TypingChannel } from '../lib/chat';
 import { dateLocale, t } from '../lib/i18n';
@@ -42,6 +43,119 @@ interface ChatProps {
 
 function timeLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
+}
+
+function dayKeyOf(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+export function dayLabel(iso: string): string {
+  const now = new Date();
+  if (dayKeyOf(iso) === dayKeyOf(now.toISOString())) return t('msg.today');
+  const yest = new Date(now);
+  yest.setDate(yest.getDate() - 1);
+  if (dayKeyOf(iso) === dayKeyOf(yest.toISOString())) return t('msg.yesterday');
+  return new Date(iso).toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short' });
+}
+
+/** WhatsApp-style block: same author, same day, less than 5 min apart */
+function sameBlock(a: { mine: boolean; created_at: string }, b: { mine: boolean; created_at: string }): boolean {
+  return (
+    a.mine === b.mine &&
+    dayKeyOf(a.created_at) === dayKeyOf(b.created_at) &&
+    Math.abs(new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) < 5 * 60_000
+  );
+}
+
+/** Centered "Hoje / Ontem / 12 jul" chip between day blocks. */
+export function DaySeparator({ iso }: { iso: string }) {
+  return (
+    <div className="flex justify-center py-2">
+      <span className="rounded-full border border-border bg-surface px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-text-faint">
+        {dayLabel(iso)}
+      </span>
+    </div>
+  );
+}
+
+/** Fullscreen image viewer: Esc / click-outside closes; download + copy. */
+function ImageViewer({
+  src,
+  onClose,
+  onToast,
+}: {
+  src: string;
+  onClose: () => void;
+  onToast: (m: string) => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function toPngBlob(): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext('2d')?.drawImage(img, 0, 0);
+        canvas.toBlob((b) => resolve(b), 'image/png');
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  async function download() {
+    const blob = await toPngBlob();
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `locked-in-img-${Date.now()}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onToast(t('img.saved'));
+  }
+
+  async function copy() {
+    const blob = await toPngBlob();
+    if (!blob) return;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      onToast(t('img.copied'));
+    } catch {
+      onToast(t('img.copy.fail'));
+    }
+  }
+
+  return (
+    <div
+      className="animate-fade-in fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <img
+        src={src}
+        alt=""
+        className="animate-scale-in max-h-[80vh] max-w-[90vw] rounded-xl object-contain shadow-2xl shadow-black"
+      />
+      <div className="mt-4 flex gap-2">
+        <button type="button" onClick={download} className="chunk-btn px-4 py-2 text-xs text-text">
+          ⬇ {t('img.download')}
+        </button>
+        <button type="button" onClick={copy} className="chunk-btn px-4 py-2 text-xs text-text">
+          ⧉ {t('img.copy')}
+        </button>
+        <button type="button" onClick={onClose} className="chunk-btn px-4 py-2 text-xs text-text-dim">
+          {t('misc.close')}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** picked image → data-url, capped so the encrypted payload fits the row */
@@ -159,6 +273,7 @@ export function ChatView({
   refetchKey,
   jamAction,
 }: ChatProps) {
+  const { pushToast } = useToast();
   const [messages, setMessages] = useState<DecryptedMessage[] | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -171,9 +286,20 @@ export function ChatView({
   const [peerTyping, setPeerTyping] = useState(false);
   const [clipOpen, setClipOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [viewImg, setViewImg] = useState<string | null>(null);
+  const [flashId, setFlashId] = useState<number | null>(null);
+  const [newCount, setNewCount] = useState(0);
   const typingChanRef = useRef<TypingChannel | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const lastMsgIdRef = useRef<number | null>(null);
+  const msgRefs = useRef(new Map<number, HTMLDivElement>());
+  // spring entrance only for messages that arrive AFTER the initial history
+  // paint — animating the whole backlog on open was rejected as "bounce".
+  // Track the max id at load so re-renders never re-class old bubbles.
+  const initialMaxIdRef = useRef<number | null>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -188,9 +314,56 @@ export function ChatView({
   useEffect(() => {
     chat.markConversationRead(friend.userId);
   }, [friend.userId, refetchKey]);
+
+  // arm the new-message spring: everything at/below this id is history
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
+    if (messages === null || initialMaxIdRef.current !== null) return;
+    initialMaxIdRef.current = messages.reduce((acc, m) => Math.max(acc, m.id), 0);
+  }, [messages]);
+
+  // smart scroll: follow the bottom while you're there; scrolled up + new
+  // incoming message → floating "new messages" chip instead of yanking you down
+  useEffect(() => {
+    const last = messages?.[messages.length - 1];
+    const lastId = last?.id ?? null;
+    const grew = lastId !== null && lastId !== lastMsgIdRef.current;
+    lastMsgIdRef.current = lastId;
+    if (atBottomRef.current || (grew && last?.mine)) {
+      bottomRef.current?.scrollIntoView({ block: 'end' });
+      setNewCount(0);
+    } else if (grew && last && !last.mine) {
+      setNewCount((c) => c + 1);
+    }
   }, [messages, peerTyping]);
+
+  function onListScroll() {
+    const el = listRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    atBottomRef.current = atBottom;
+    if (atBottom) setNewCount(0);
+  }
+
+  // click anywhere outside a popover ([data-pop]) closes every floating menu
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.('[data-pop]')) return;
+      setReactFor(null);
+      setMenuFor(null);
+      setClipOpen(false);
+      setEmojiOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  function jumpToMessage(id: number) {
+    const el = msgRefs.current.get(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlashId(id);
+    window.setTimeout(() => setFlashId((f) => (f === id ? null : f)), 1400);
+  }
 
   useEffect(() => {
     const chan = chat.joinTyping(myUserId, friend.userId, () => {
@@ -279,7 +452,7 @@ export function ChatView({
   const byId = new Map((messages ?? []).map((m) => [m.id, m]));
 
   return (
-    <div key={friend.userId} className="animate-fade-in flex h-full min-h-0 flex-col">
+    <div key={friend.userId} className="animate-fade-in relative flex h-full min-h-0 flex-col">
       {/* header */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -324,7 +497,11 @@ export function ChatView({
       </div>
 
       {/* messages */}
-      <div className="chat-backdrop min-h-0 flex-1 space-y-1 overflow-y-auto px-4 py-3">
+      <div
+        ref={listRef}
+        onScroll={onListScroll}
+        className="chat-backdrop min-h-0 flex-1 overflow-y-auto px-4 py-3"
+      >
         {messages === null && (
           <div className="flex justify-center py-8">
             <span className="skeleton h-5 w-48">.</span>
@@ -337,19 +514,33 @@ export function ChatView({
         )}
         {messages?.map((m, i) => {
           const prev = messages[i - 1];
-          const firstOfGroup = !prev || prev.mine !== m.mine;
+          const next = messages[i + 1];
+          const firstOfGroup = !prev || !sameBlock(prev, m);
+          const lastOfGroup = !next || !sameBlock(m, next);
+          const newDay = !prev || dayKeyOf(prev.created_at) !== dayKeyOf(m.created_at);
           const quoted = m.reply_to ? byId.get(m.reply_to) : null;
           const isEditing = editing?.id === m.id;
           return (
+            <div key={m.id}>
+            {newDay && <DaySeparator iso={m.created_at} />}
             <div
-              key={m.id}
-              className={`group animate-msg-in flex ${m.mine ? 'justify-end' : 'justify-start'}`}
+              ref={(el) => {
+                if (el) msgRefs.current.set(m.id, el);
+                else msgRefs.current.delete(m.id);
+              }}
+              className={`group flex ${m.mine ? 'justify-end' : 'justify-start'} ${
+                firstOfGroup ? 'mt-2.5' : 'mt-[3px]'
+              } ${
+                initialMaxIdRef.current !== null && m.id > initialMaxIdRef.current
+                  ? 'animate-msg-in-spring'
+                  : ''
+              } ${flashId === m.id ? 'flash-msg rounded-2xl' : ''}`}
             >
               <div
                 className={`flex max-w-[78%] items-end gap-2 ${m.mine ? 'flex-row-reverse' : ''}`}
               >
                 {!m.mine && (
-                  <div className="w-7 shrink-0">{firstOfGroup && <AvatarSm friend={friend} />}</div>
+                  <div className="w-7 shrink-0">{lastOfGroup && <AvatarSm friend={friend} />}</div>
                 )}
 
                 <div className="min-w-0">
@@ -365,7 +556,19 @@ export function ChatView({
                   ) : m.kind === 'image' ? (
                     <div className="bubble-shadow overflow-hidden rounded-2xl border-2 border-border-strong">
                       {m.text ? (
-                        <img src={m.text} alt="" className="block max-h-72 max-w-[300px]" />
+                        <button
+                          type="button"
+                          onClick={() => setViewImg(m.text)}
+                          title={t('img.open')}
+                          className="block cursor-zoom-in"
+                        >
+                          <img
+                            src={m.text}
+                            alt=""
+                            className="img-fade block max-h-72 max-w-[300px]"
+                            onLoad={(e) => e.currentTarget.classList.add('img-loaded')}
+                          />
+                        </button>
                       ) : (
                         <div className="bg-surface px-4 py-3 text-xs italic text-text-faint">
                           🔒 {t('msg.undecryptable')}
@@ -405,16 +608,19 @@ export function ChatView({
                     <div
                       className={`bubble-shadow relative rounded-2xl border-2 px-3.5 py-2 text-sm font-medium leading-relaxed ${
                         m.mine
-                          ? 'rounded-br-md border-border-strong bg-accent text-bg'
-                          : 'rounded-bl-md border-border-strong bg-surface text-text'
+                          ? `border-border-strong bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'} ${lastOfGroup ? 'rounded-br-md' : 'rounded-br-md'}`
+                          : `border-border-strong bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'} ${lastOfGroup ? 'rounded-bl-md' : 'rounded-bl-md'}`
                       }`}
                     >
                       {quoted && (
-                        <div
-                          className={`mb-1.5 rounded-lg border-l-4 px-2 py-1 text-[11px] ${
+                        <button
+                          type="button"
+                          onClick={() => jumpToMessage(quoted.id)}
+                          title={t('msg.jump')}
+                          className={`mb-1.5 block w-full rounded-lg border-l-4 px-2 py-1 text-left text-[11px] transition-colors ${
                             m.mine
-                              ? 'border-bg/40 bg-bg/10 text-bg/80'
-                              : 'border-accent/60 bg-bg/40 text-text-dim'
+                              ? 'border-bg/40 bg-bg/10 text-bg/80 hover:bg-bg/20'
+                              : 'border-accent/60 bg-bg/40 text-text-dim hover:bg-bg/60'
                           }`}
                         >
                           <span className="font-bold">
@@ -427,7 +633,7 @@ export function ChatView({
                                 ? '🖼'
                                 : quoted.text.slice(0, 80)}
                           </span>
-                        </div>
+                        </button>
                       )}
                       {m.text === null ? (
                         <span className="text-xs italic opacity-70">
@@ -436,14 +642,17 @@ export function ChatView({
                       ) : (
                         m.text
                       )}
-                      <span
-                        className={`ml-2 align-baseline font-mono text-[9px] tabular-nums ${
-                          m.mine ? 'text-bg/60' : 'text-text-faint'
-                        }`}
-                      >
-                        {m.edited_at ? `${t('msg.edited')} · ` : ''}
-                        {timeLabel(m.created_at)}
-                      </span>
+                      {(lastOfGroup || m.edited_at) && (
+                        <span
+                          className={`ml-2 align-baseline font-mono text-[9px] tabular-nums ${
+                            m.mine ? 'text-bg/60' : 'text-text-faint'
+                          }`}
+                        >
+                          {m.edited_at ? `${t('msg.edited')} · ` : ''}
+                          {timeLabel(m.created_at)}
+                          {m.mine ? ' ✓' : ''}
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -454,7 +663,7 @@ export function ChatView({
                           key={r.emoji}
                           type="button"
                           onClick={() => react(m.id, r.emoji)}
-                          className={`rounded-full border-2 px-2 py-0.5 text-[14px] transition-transform hover:scale-110 ${
+                          className={`animate-pop rounded-full border-2 px-2 py-0.5 text-[14px] transition-transform hover:scale-110 ${
                             r.mine
                               ? 'border-accent bg-accent-dim'
                               : 'border-border bg-surface hover:border-border-strong'
@@ -474,6 +683,7 @@ export function ChatView({
 
                 {/* hover actions: react · reply · ⋯ */}
                 <div
+                  data-pop
                   className={`flex shrink-0 items-center gap-0.5 pb-1 transition-opacity duration-150 ${
                     reactFor === m.id || menuFor === m.id
                       ? 'opacity-100'
@@ -559,6 +769,7 @@ export function ChatView({
                 </div>
               </div>
             </div>
+            </div>
           );
         })}
 
@@ -572,8 +783,8 @@ export function ChatView({
                 {[0, 1, 2].map((d) => (
                   <span
                     key={d}
-                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-dim"
-                    style={{ animationDelay: `${d * 150}ms` }}
+                    className="typing-dot h-1.5 w-1.5 rounded-full bg-text-dim"
+                    style={{ animationDelay: `${d * 180}ms` }}
                   />
                 ))}
               </span>
@@ -582,6 +793,28 @@ export function ChatView({
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* scrolled up + new incoming → floating catcher */}
+      {newCount > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            setNewCount(0);
+          }}
+          className="animate-scale-in absolute bottom-24 left-1/2 z-20 -translate-x-1/2 rounded-full border-2 border-accent bg-surface px-4 py-1.5 text-xs font-extrabold text-accent shadow-xl shadow-black/50 hover:bg-accent-dim"
+        >
+          ↓ {newCount} {t('msg.newbelow')}
+        </button>
+      )}
+
+      {viewImg && (
+        <ImageViewer
+          src={viewImg}
+          onClose={() => setViewImg(null)}
+          onToast={(m) => pushToast(m, 'info')}
+        />
+      )}
 
       {/* reply bar */}
       {replyTo && (
@@ -617,7 +850,7 @@ export function ChatView({
         className="flex shrink-0 items-center gap-2 border-t border-border p-3"
       >
         {/* clip menu: emoji / image / jam */}
-        <div className="relative">
+        <div className="relative" data-pop>
           <button
             type="button"
             onClick={() => {
@@ -707,6 +940,16 @@ export function ChatView({
           onChange={(e) => {
             setDraft(e.target.value);
             typingChanRef.current?.sendTyping();
+          }}
+          onPaste={(e) => {
+            // Ctrl+V straight from the clipboard — screenshots, copied images
+            const file = Array.from(e.clipboardData.files).find((f) =>
+              f.type.startsWith('image/'),
+            );
+            if (file) {
+              e.preventDefault();
+              sendImage(file);
+            }
           }}
           placeholder={t('msg.placeholder')}
           maxLength={chat.MESSAGE_MAX_CHARS}
