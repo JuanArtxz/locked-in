@@ -35,13 +35,17 @@ export function FriendsBar({ social: soc, onOpenFriends }: FriendsBarProps) {
             className="relative shrink-0"
           >
             <div
-              className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 text-xs font-extrabold uppercase transition-colors ${
+              className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border-2 text-xs font-extrabold uppercase transition-colors ${
                 live
                   ? 'border-accent bg-accent/10 text-accent'
                   : 'border-border-strong bg-surface text-text-dim hover:text-text'
               }`}
             >
-              {f.username.slice(0, 2)}
+              {f.avatar ? (
+                <img src={f.avatar} alt="" className="h-full w-full object-cover" />
+              ) : (
+                f.username.slice(0, 2)
+              )}
             </div>
             <span
               className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg ${

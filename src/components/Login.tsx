@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import * as cloud from '../lib/cloud';
 import * as db from '../lib/db';
 import { getLang, setLang, t } from '../lib/i18n';
@@ -210,20 +211,44 @@ export function Login({ onDone }: LoginProps) {
         aria-hidden
       />
 
-      {/* language toggle, top-right */}
-      <div className="absolute right-4 top-4 flex items-center gap-0.5 rounded-lg border-2 border-border-strong bg-surface p-0.5">
-        {(['pt', 'en'] as const).map((l) => (
-          <button
-            key={l}
-            type="button"
-            onClick={() => pickLang(l)}
-            className={`h-6 w-8 rounded-md text-[11px] font-bold uppercase ${
-              lang === l ? 'bg-accent text-bg' : 'text-text-dim hover:text-text'
-            }`}
-          >
-            {l}
-          </button>
-        ))}
+      {/* frameless window: draggable top strip */}
+      <div data-tauri-drag-region className="absolute inset-x-0 top-0 h-10" />
+
+      {/* language toggle + window controls, top-right */}
+      <div className="absolute right-2 top-2 flex items-center gap-2">
+        <div className="flex items-center gap-0.5 rounded-lg border-2 border-border-strong bg-surface p-0.5">
+          {(['pt', 'en'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => pickLang(l)}
+              className={`h-6 w-8 rounded-md text-[11px] font-bold uppercase ${
+                lang === l ? 'bg-accent text-bg' : 'text-text-dim hover:text-text'
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => getCurrentWindow().minimize()}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-dim hover:bg-surface-hover hover:text-text"
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <line x1="1" y1="5.5" x2="10" y2="5.5" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => getCurrentWindow().close()}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-dim hover:bg-danger hover:text-white"
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <line x1="1.5" y1="1.5" x2="9.5" y2="9.5" />
+            <line x1="9.5" y1="1.5" x2="1.5" y2="9.5" />
+          </svg>
+        </button>
       </div>
 
       <div className="relative w-full max-w-sm">

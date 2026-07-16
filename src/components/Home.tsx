@@ -9,9 +9,6 @@ import type { Session, Settings } from '../types';
 import { HabitChips } from './Habits';
 import { Mascot } from './Mascot';
 import type { MascotMood } from './Mascot';
-import { computeInsight } from '../lib/insights';
-import type { Insight } from '../lib/insights';
-import { getLang } from '../lib/i18n';
 
 interface HomeProps {
   focus: UseFocusSession;
@@ -54,14 +51,6 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
       .then((rows) => setLastSession(rows[0] ?? null))
       .catch((err) => onError(String(err)));
   }, [focus.phase, onError, refreshKey]);
-
-  const [insight, setInsight] = useState<Insight | null>(null);
-  useEffect(() => {
-    if (focus.phase !== 'idle') return;
-    computeInsight(settings?.daily_goal_hours ?? 4)
-      .then(setInsight)
-      .catch(() => setInsight(null));
-  }, [focus.phase, refreshKey, settings?.daily_goal_hours]);
 
   const dailyGoalSec = (settings?.daily_goal_hours ?? 4) * 3600;
   const goalProgress = today ? Math.min(1, today.total_sec / dailyGoalSec) : 0;
@@ -476,23 +465,6 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
             </span>
             <span>{t('home.goal')} {settings?.daily_goal_hours ?? 4}h</span>
           </div>
-        </div>
-      )}
-
-      {insight && (
-        <div className="animate-fade-up mt-3 flex w-full max-w-xl items-center gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-2.5 xl:max-w-2xl">
-          <div className="shrink-0">
-            <Mascot mood={insight.mood} size={30} />
-          </div>
-          <p className="min-w-0 flex-1 text-xs leading-relaxed">
-            <span className="font-bold text-text">
-              {getLang() === 'en' ? insight.headlineEn : insight.headlinePt}
-            </span>
-            <span className="text-text-dim">
-              {' — '}
-              {getLang() === 'en' ? insight.tipEn : insight.tipPt}
-            </span>
-          </p>
         </div>
       )}
 

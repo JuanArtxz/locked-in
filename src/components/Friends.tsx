@@ -63,11 +63,11 @@ export function ClaimUsernameForm({ onClaimed }: { onClaimed: () => void }) {
   );
 }
 
-function Avatar({ name, live }: { name: string; live: boolean }) {
+function Avatar({ name, live, photo }: { name: string; live: boolean; photo?: string | null }) {
   return (
     <div className="relative">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-border-strong bg-bg text-sm font-extrabold uppercase text-text">
-        {name.slice(0, 2)}
+      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border-2 border-border-strong bg-bg text-sm font-extrabold uppercase text-text">
+        {photo ? <img src={photo} alt="" className="h-full w-full object-cover" /> : name.slice(0, 2)}
       </div>
       <span
         className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-surface ${
@@ -253,7 +253,7 @@ export function FriendsPage({ signedIn, social: soc, onError, onJoinFocus }: Fri
             {state.incoming.map((f) => (
               <div key={f.friendshipId} className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <Avatar name={f.username} live={false} />
+                  <Avatar name={f.username} live={false} photo={f.avatar} />
                   <span className="truncate text-sm font-bold text-text">@{f.username}</span>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
@@ -319,7 +319,7 @@ export function FriendsPage({ signedIn, social: soc, onError, onJoinFocus }: Fri
             return (
               <div key={f.friendshipId} className="group flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <Avatar name={f.username} live={live} />
+                  <Avatar name={f.username} live={live} photo={f.avatar} />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-bold text-text">@{f.username}</div>
                     <div className="truncate text-[11px] font-medium text-text-dim">

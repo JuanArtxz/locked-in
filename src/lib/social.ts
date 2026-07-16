@@ -11,12 +11,14 @@ export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 export interface Profile {
   user_id: string;
   username: string;
+  avatar_b64?: string | null;
 }
 
 export interface FriendEntry {
   friendshipId: number;
   userId: string;
   username: string;
+  avatar: string | null;
 }
 
 export interface FriendsState {
@@ -64,10 +66,22 @@ export async function getMyProfile(): Promise<Profile | null> {
   if (!user) return null;
   const { data } = await supabase
     .from('profiles')
-    .select('user_id, username')
+    .select('user_id, username, avatar_b64')
     .eq('user_id', user.id)
     .maybeSingle();
   return (data as Profile | null) ?? null;
+}
+
+/** Sets (or clears) the profile photo — a small jpeg data-url. */
+export async function updateAvatar(b64: string | null): Promise<string | null> {
+  const user = await currentUser();
+  if (!user) return 'not signed in';
+  if (b64 && b64.length > 200_000) return 'image too large';
+  const { error } = await supabase
+    .from('profiles')
+    .update({ avatar_b64: b64 })
+    .eq('user_id', user.id);
+  return error ? error.message : null;
 }
 
 export type ClaimResult = 'ok' | 'taken' | 'invalid' | 'error';
@@ -111,18 +125,24 @@ export async function loadFriendsState(): Promise<FriendsState> {
   }[];
 
   const otherIds = [...new Set(all.map((f) => (f.requester === user.id ? f.addressee : f.requester)))];
-  const names = new Map<string, string>();
+  const profiles = new Map<string, Profile>();
   if (otherIds.length > 0) {
     const { data: profs } = await supabase
       .from('profiles')
-      .select('user_id, username')
+      .select('user_id, username, avatar_b64')
       .in('user_id', otherIds);
-    for (const p of (profs ?? []) as Profile[]) names.set(p.user_id, p.username);
+    for (const p of (profs ?? []) as Profile[]) profiles.set(p.user_id, p);
   }
 
   const entry = (f: (typeof all)[number]): FriendEntry => {
     const other = f.requester === user.id ? f.addressee : f.requester;
-    return { friendshipId: f.id, userId: other, username: names.get(other) ?? '???' };
+    const p = profiles.get(other);
+    return {
+      friendshipId: f.id,
+      userId: other,
+      username: p?.username ?? '???',
+      avatar: p?.avatar_b64 ?? null,
+    };
   };
 
   return {

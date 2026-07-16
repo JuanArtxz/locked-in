@@ -20,6 +20,8 @@ create table if not exists public.profiles (
   username text not null check (username ~ '^[A-Za-z0-9_]{3,20}$'),
   created_at timestamptz not null default now()
 );
+-- small profile photo (~128px jpeg data-url), visible to other signed-in users
+alter table public.profiles add column if not exists avatar_b64 text;
 create unique index if not exists profiles_username_lower
   on public.profiles (lower(username));
 

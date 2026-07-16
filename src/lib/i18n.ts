@@ -76,6 +76,16 @@ const dict: Record<string, { pt: string; en: string }> = {
   },
   'fr.err.generic': { pt: 'deu ruim — tenta de novo', en: 'something failed — try again' },
   'login.username': { pt: 'nome único (ex: JuanArtxz)', en: 'unique name (e.g. JuanArtxz)' },
+
+  // titlebar + profile
+  'menu.profile': { pt: 'Perfil', en: 'Profile' },
+  'menu.account': { pt: 'Conta', en: 'Account' },
+  'profile.hours': { pt: 'focado total', en: 'total focused' },
+  'profile.sessions': { pt: 'sessões', en: 'sessions' },
+  'profile.changephoto': { pt: 'trocar foto', en: 'change photo' },
+  'win.min': { pt: 'Minimizar', en: 'Minimize' },
+  'win.max': { pt: 'Maximizar', en: 'Maximize' },
+  'win.close': { pt: 'Fechar', en: 'Close' },
   'tab.log': { pt: 'Histórico', en: 'History' },
   'tab.stats': { pt: 'Stats', en: 'Stats' },
   'tab.settings': { pt: 'Ajustes', en: 'Settings' },

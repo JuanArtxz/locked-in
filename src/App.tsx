@@ -12,7 +12,9 @@ import { HabitsPage } from './components/Habits';
 import { Home } from './components/Home';
 import { Log } from './components/Log';
 import { Stats } from './components/Stats';
+import { ProfileModal } from './components/Profile';
 import { SettingsScreen } from './components/Settings';
+import { Titlebar } from './components/Titlebar';
 import { Week } from './components/Week';
 import { useFocusSession } from './hooks/useFocusSession';
 import { useSettings } from './hooks/useSettings';
@@ -46,6 +48,7 @@ type Tab =
   | 'stats'
   | 'settings';
 
+// settings intentionally not in the nav — the titlebar gear + avatar menu open it
 const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'home', labelKey: 'tab.home' },
   { id: 'checkin', labelKey: 'tab.checkin' },
@@ -55,7 +58,6 @@ const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'friends', labelKey: 'tab.friends' },
   { id: 'log', labelKey: 'tab.log' },
   { id: 'stats', labelKey: 'tab.stats' },
-  { id: 'settings', labelKey: 'tab.settings' },
 ];
 
 function AppShell() {
@@ -79,6 +81,7 @@ function AppShell() {
   });
   const [tab, setTab] = useState<Tab>('home');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
 
   // boot splash: shown at least 5s while everything loads behind it
   const [splashDone, setSplashDone] = useState(false);
@@ -753,36 +756,29 @@ function AppShell() {
         </div>
       )}
 
-      <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border px-3 sm:px-5">
-        <div className="hidden items-center gap-2 md:flex">
-          <span className="h-2 w-2 rounded-full bg-accent" />
-          <span className="text-sm font-semibold tracking-tight text-text">Locked In</span>
-        </div>
+      <Titlebar
+        tabs={TABS}
+        tab={tab}
+        onTab={(id) => setTab(id as Tab)}
+        statusChip={statusChip}
+        social={social}
+        signedIn={signedIn}
+        userName={settingsHook.settings?.user_name?.trim() || null}
+        onOpenProfile={() => setShowProfile(true)}
+      />
 
-        <nav className="scrollbar-none flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-full border border-border bg-surface p-0.5">
-          {TABS.map((tabDef) => (
-            <button
-              key={tabDef.id}
-              type="button"
-              onClick={() => setTab(tabDef.id)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium sm:px-3.5 ${
-                tab === tabDef.id
-                  ? 'bg-surface-hover text-text shadow-sm'
-                  : 'text-text-dim hover:text-text'
-              }`}
-            >
-              {t(tabDef.labelKey)}
-              {tabDef.id === 'friends' && (social.state?.incoming.length ?? 0) > 0 && (
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-extrabold text-bg">
-                  {social.state?.incoming.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-
-        <div className="flex shrink-0 items-center justify-end md:min-w-[110px]">{statusChip}</div>
-      </header>
+      {showProfile && (
+        <ProfileModal
+          social={social}
+          userName={settingsHook.settings?.user_name?.trim() || null}
+          onError={onError}
+          onClose={() => setShowProfile(false)}
+          onOpenFriends={() => {
+            setShowProfile(false);
+            setTab('friends');
+          }}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
       <main key={tab} className="animate-fade-up min-h-0 flex-1">

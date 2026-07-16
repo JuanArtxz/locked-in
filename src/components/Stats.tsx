@@ -10,7 +10,10 @@ import {
 } from 'recharts';
 import { parseAppUsage } from '../lib/apps';
 import * as db from '../lib/db';
-import { dateLocale, t, weekdayShort } from '../lib/i18n';
+import { computeInsight } from '../lib/insights';
+import type { Insight } from '../lib/insights';
+import { dateLocale, getLang, t, weekdayShort } from '../lib/i18n';
+import { Mascot } from './Mascot';
 import { formatDurationShort, localDayKey, todayKey } from '../lib/time';
 import type { ProjectBreakdown, Session, Settings } from '../types';
 
@@ -46,6 +49,13 @@ export function Stats({ settings, onError, refreshKey }: StatsProps) {
   const [projects, setProjects] = useState<ProjectBreakdown[]>([]);
   const [avgOverrun, setAvgOverrun] = useState(0);
   const [sessions, setSessions] = useState<Session[]>([]);
+
+  const [insight, setInsight] = useState<Insight | null>(null);
+  useEffect(() => {
+    computeInsight(settings?.daily_goal_hours ?? 4)
+      .then(setInsight)
+      .catch(() => setInsight(null));
+  }, [refreshKey, settings?.daily_goal_hours]);
 
   useEffect(() => {
     const sinceIso = new Date(Date.now() - HEATMAP_WEEKS * 7 * DAY_MS).toISOString();
@@ -186,6 +196,23 @@ export function Stats({ settings, onError, refreshKey }: StatsProps) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-8 px-4 pb-10 pt-6 sm:px-6 xl:max-w-4xl">
+        {insight && (
+          <div className="animate-fade-up flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
+            <div className="shrink-0">
+              <Mascot mood={insight.mood} size={34} />
+            </div>
+            <p className="min-w-0 flex-1 text-[13px] leading-relaxed">
+              <span className="font-bold text-text">
+                {getLang() === 'en' ? insight.headlineEn : insight.headlinePt}
+              </span>
+              <span className="text-text-dim">
+                {' — '}
+                {getLang() === 'en' ? insight.tipEn : insight.tipPt}
+              </span>
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard
             value={formatDurationShort(todaySec)}
