@@ -579,6 +579,7 @@ fn show_notice(
   title: String,
   body: String,
   mood: String,
+  data: Option<String>,
 ) {
   let cfg = state.lock().unwrap().cfg.clone();
   fire_popup(
@@ -588,6 +589,7 @@ fn show_notice(
       "title": title,
       "body": body,
       "mood": mood,
+      "data": data,
       "lang": cfg.lang,
       "sound": false,
       "accent": cfg.accent,

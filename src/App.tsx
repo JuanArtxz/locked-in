@@ -512,9 +512,12 @@ function AppShell() {
         refreshUnread();
         const who = jamLookup(row.sender).username;
         pushToast(t('msg.new', who), 'info');
-        invoke('show_notice', { title: '💬 @' + who, body: t('msg.new.body'), mood: 'happy' }).catch(
-          () => {},
-        );
+        invoke('show_notice', {
+          title: '💬 @' + who,
+          body: t('msg.new.body'),
+          mood: 'happy',
+          data: JSON.stringify({ type: 'chat', userId: row.sender }),
+        }).catch(() => {});
       }
     });
     return unsub;
@@ -525,6 +528,23 @@ function AppShell() {
     if (!signedIn) return;
     return chatLib.subscribeReactions(() => setChatRefetchKey((k) => k + 1));
   }, [signedIn]);
+
+  // clicking a corner popup that carries an action (e.g. a new message) jumps
+  // straight into that conversation
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<{ data: string }>('notice:action', (e) => {
+      try {
+        const action = JSON.parse(e.payload.data) as { type?: string; userId?: string };
+        if (action.type === 'chat' && action.userId) openChatShortcut(action.userId);
+      } catch {
+        // malformed action — ignore
+      }
+    }).then((u) => {
+      unlisten = u;
+    });
+    return () => unlisten?.();
+  }, [openChatShortcut]);
 
   const onChatOpened = useCallback(
     (friendId: string | null) => {

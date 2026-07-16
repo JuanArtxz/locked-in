@@ -328,7 +328,14 @@ export function Popup() {
       <div className="flex h-screen w-screen items-end justify-end p-2">
         <button
           type="button"
-          onClick={() => hide()}
+          onClick={() => {
+            // notices can carry a click action (e.g. open that conversation)
+            if (payload.data) {
+              emit('notice:action', { data: payload.data }).catch(() => {});
+              invoke('show_main_window').catch(() => {});
+            }
+            hide();
+          }}
           className={`w-full cursor-pointer rounded-2xl border border-border bg-surface p-4 text-left shadow-2xl shadow-black/60 hover:border-border-strong ${
             leaving ? 'animate-popup-out' : 'animate-popup-in'
           }`}

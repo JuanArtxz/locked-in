@@ -187,6 +187,8 @@ export type PopupPayload =
       body: string;
       /** mascot mood name, e.g. 'hyped' | 'sad' | 'happy' | 'sleep' */
       mood: string;
+      /** optional click action forwarded to the main window (JSON string) */
+      data?: string | null;
       lang: string;
       sound: boolean;
       accent: string;
