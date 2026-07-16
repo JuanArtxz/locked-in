@@ -138,10 +138,8 @@ interface GroupViewProps {
   summary: GroupSummary;
   myUserId: string;
   friends: FriendEntry[];
-  /** presence lookup for live dots + shared-timer base */
+  /** presence lookup for live dots, jam liveness + shared-timer base */
   isLive: (userId: string) => boolean;
-  /** fresh heartbeat (focusing OR not) — a force-closed member is NOT online */
-  isOnline: (userId: string) => boolean;
   refetchKey: number;
   onError: (m: string) => void;
   onBack: () => void;
@@ -157,7 +155,6 @@ export function GroupView({
   myUserId,
   friends,
   isLive,
-  isOnline,
   refetchKey,
   onError,
   onBack,
@@ -190,10 +187,12 @@ export function GroupView({
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
 
-  // a member counts as in the jam only if in_jam AND still alive (fresh
-  // heartbeat) — a force-close leaves in_jam stuck server-side ("ghost jam")
+  // a member counts as in the jam only if in_jam AND presence says they're
+  // FOCUSING now (or it's me). The flag alone desyncs on force-close (stale
+  // presence) and on stop-with-app-open (fresh presence, focusing=false) —
+  // cross-checking the live focusing state kills both ghost kinds.
   const jamMembers = members.filter(
-    (m) => m.in_jam && (m.user_id === myUserId || isOnline(m.user_id)),
+    (m) => m.in_jam && (m.user_id === myUserId || isLive(m.user_id)),
   );
   // a start time with nobody actually alive inside is a ghost — treat as no
   // active jam so the "start" button shows again

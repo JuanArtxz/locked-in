@@ -706,73 +706,18 @@ export function FriendsPage({
           })}
         </div>
 
-        {/* active jams across my groups — join from right here */}
-        {groupsHook.list.some((g) => g.group.jam_started_at) && (
-          <div className="space-y-1.5">
-            <div className="px-1 text-[10px] font-extrabold uppercase tracking-wide text-accent">
-              🎧 {t('jams.active')}
-            </div>
-            {groupsHook.list
-              .filter((g) => g.group.jam_started_at)
-              .map((g) => {
-                const inJam = g.members.filter((m) => m.in_jam);
-                const meIn = activeGroupJamId === g.group.id;
-                return (
-                  <button
-                    key={g.group.id}
-                    type="button"
-                    onClick={() => openGroup(g.group.id)}
-                    className="w-full rounded-xl border-2 border-accent bg-accent-dim/60 px-2.5 py-2 text-left transition-transform hover:scale-[1.01]"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-xs font-extrabold text-text">
-                        {g.group.jam_task}
-                      </span>
-                      <span className="shrink-0 font-mono text-[10px] font-bold tabular-nums text-accent">
-                        {formatDurationShort(
-                          Math.max(
-                            0,
-                            (Date.now() - new Date(g.group.jam_started_at!).getTime()) / 1000,
-                          ),
-                        )}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <div className="flex -space-x-1.5">
-                        {inJam.slice(0, 4).map((m) => (
-                          <div
-                            key={m.user_id}
-                            title={`@${m.username}`}
-                            className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-accent bg-bg text-[8px] font-extrabold uppercase text-accent"
-                          >
-                            {m.avatar ? (
-                              <img src={m.avatar} alt="" className="h-full w-full object-cover" />
-                            ) : (
-                              m.username.slice(0, 1)
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <span className="text-[10px] font-bold text-accent">
-                        {t('grp.jam.count', String(inJam.length))} · {g.group.name}
-                        {meIn && ' · 🎧'}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-          </div>
-        )}
-
         {/* active jams — group jams + friends currently jamming */}
         {(() => {
           // a member counts as truly in the jam only if in_jam AND their
-          // presence is fresh (or it's me) — a force-close leaves in_jam stuck
+          // presence says they're actually FOCUSING right now (or it's me).
+          // The in_jam flag alone desyncs — force-close leaves it stuck (stale
+          // presence), and stop-with-app-still-open leaves it stuck too (fresh
+          // presence but focusing=false). Cross-checking focusing kills both.
           const liveInJam = (g: (typeof groupsHook.list)[number]) =>
             g.members.filter(
               (m) =>
                 m.in_jam &&
-                (m.user_id === me.user_id || social.isOnline(soc.presence.get(m.user_id))),
+                (m.user_id === me.user_id || social.isLive(soc.presence.get(m.user_id))),
             );
           const groupJams = groupsHook.list
             .filter((g) => g.group.jam_started_at && liveInJam(g).length > 0)
@@ -871,7 +816,15 @@ export function FriendsPage({
             )}
           </div>
           {groupsHook.list.map((g) => {
-            const jamOn = !!g.group.jam_started_at;
+            // headphones only when the jam is genuinely live (someone focusing),
+            // not just because a stale jam_started_at lingers
+            const jamOn =
+              !!g.group.jam_started_at &&
+              g.members.some(
+                (m) =>
+                  m.in_jam &&
+                  (m.user_id === me.user_id || social.isLive(soc.presence.get(m.user_id))),
+              );
             return (
               <button
                 key={g.group.id}
@@ -993,7 +946,6 @@ export function FriendsPage({
               myUserId={me.user_id}
               friends={state.friends}
               isLive={(uid) => social.isLive(soc.presence.get(uid))}
-              isOnline={(uid) => social.isOnline(soc.presence.get(uid))}
               refetchKey={groupsHook.tick}
               onError={onError}
               onBack={() => setGroupOpen(null)}

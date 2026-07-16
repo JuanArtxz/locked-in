@@ -170,12 +170,14 @@ function AppShell() {
   const [activeGroupJamId, setActiveGroupJamId] = useState<number | null>(null);
   const activeGroupJamRef = useRef<number | null>(null);
   activeGroupJamRef.current = activeGroupJamId;
-  // clearing the focus session clears my group-jam membership too
+  // clearing the focus session clears my group-jam membership too. Clear ALL
+  // my in_jam flags, not just activeGroupJamId — that ref can be null after an
+  // app restart while the server still has me flagged (the desync that made a
+  // stopped session keep "playing" in the group). Idle = I'm in no jam, period.
   useEffect(() => {
-    if (focus.phase === 'idle' && activeGroupJamRef.current !== null) {
-      const gid = activeGroupJamRef.current;
-      setActiveGroupJamId(null);
-      groupsLib.setJamMembership(gid, false).then(() => groupsLib.maybeEndGroupJam(gid));
+    if (focus.phase === 'idle') {
+      if (activeGroupJamRef.current !== null) setActiveGroupJamId(null);
+      groupsLib.clearOrphanJamFlags().catch(() => {});
     }
   }, [focus.phase]);
 
