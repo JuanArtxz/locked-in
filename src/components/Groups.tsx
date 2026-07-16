@@ -140,6 +140,8 @@ interface GroupViewProps {
   friends: FriendEntry[];
   /** presence lookup for live dots + shared-timer base */
   isLive: (userId: string) => boolean;
+  /** fresh heartbeat (focusing OR not) — a force-closed member is NOT online */
+  isOnline: (userId: string) => boolean;
   refetchKey: number;
   onError: (m: string) => void;
   onBack: () => void;
@@ -155,6 +157,7 @@ export function GroupView({
   myUserId,
   friends,
   isLive,
+  isOnline,
   refetchKey,
   onError,
   onBack,
@@ -187,9 +190,13 @@ export function GroupView({
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
 
-  const jamMembers = members.filter((m) => m.in_jam);
-  // a jam with a start time but nobody inside is a ghost (simultaneous-leave
-  // race) — treat it as no active jam so the "start" button shows again
+  // a member counts as in the jam only if in_jam AND still alive (fresh
+  // heartbeat) — a force-close leaves in_jam stuck server-side ("ghost jam")
+  const jamMembers = members.filter(
+    (m) => m.in_jam && (m.user_id === myUserId || isOnline(m.user_id)),
+  );
+  // a start time with nobody actually alive inside is a ghost — treat as no
+  // active jam so the "start" button shows again
   const jamActive = !!group.jam_started_at && (jamMembers.length > 0 || meInJam);
   const addable = friends.filter((f) => !members.some((m) => m.user_id === f.userId));
   const canAddMore = members.length < groups.GROUP_MAX;

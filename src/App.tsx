@@ -179,6 +179,23 @@ function AppShell() {
     }
   }, [focus.phase]);
 
+  // groupmates' presence matters (is that in_jam member actually alive?), so
+  // feed their ids into the presence poll — friends or not
+  useEffect(() => {
+    const ids = [...new Set(groups.list.flatMap((g) => g.members.map((m) => m.user_id)))];
+    social.setExtraIds(ids);
+  }, [groups.list, social.setExtraIds]);
+
+  // boot self-heal: a force-close mid-jam leaves my in_jam flag stuck on the
+  // server (the "ghost jam" that keeps playing). On launch, if I'm flagged in
+  // a jam but not actually in a session, clear it.
+  const orphanHealedRef = useRef(false);
+  useEffect(() => {
+    if (!signedIn || orphanHealedRef.current) return;
+    orphanHealedRef.current = true;
+    groupsLib.clearOrphanJamFlags().catch(() => {});
+  }, [signedIn]);
+
   // group jam members are server-authoritative — mirror them into the local
   // session (fixes "I joined but Focus showed me alone": the local list only
   // had me until this sync existed)

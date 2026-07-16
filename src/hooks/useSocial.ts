@@ -7,6 +7,8 @@ export interface SocialHook {
   presence: Map<string, PresenceRow>;
   /** reload friendships + presence from the server */
   refresh: () => void;
+  /** extra userIds (groupmates) whose presence should be polled too */
+  setExtraIds: (ids: string[]) => void;
   loading: boolean;
 }
 
@@ -24,10 +26,17 @@ export function useSocial(signedIn: boolean, onError: (m: string) => void): Soci
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const extraIdsRef = useRef<string[]>([]);
+  const setExtraIds = useCallback((ids: string[]) => {
+    extraIdsRef.current = ids;
+  }, []);
+
   const refreshPresence = useCallback(async () => {
     const s = stateRef.current;
     if (!s?.me) return;
-    const ids = [s.me.user_id, ...s.friends.map((f) => f.userId)];
+    const ids = [
+      ...new Set([s.me.user_id, ...s.friends.map((f) => f.userId), ...extraIdsRef.current]),
+    ];
     try {
       setPresence(await social.fetchPresence(ids));
     } catch {
@@ -80,5 +89,5 @@ export function useSocial(signedIn: boolean, onError: (m: string) => void): Soci
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn]);
 
-  return { state, presence, refresh, loading };
+  return { state, presence, refresh, setExtraIds, loading };
 }

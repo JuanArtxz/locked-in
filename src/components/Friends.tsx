@@ -766,20 +766,27 @@ export function FriendsPage({
 
         {/* active jams — group jams + friends currently jamming */}
         {(() => {
+          // a member counts as truly in the jam only if in_jam AND their
+          // presence is fresh (or it's me) — a force-close leaves in_jam stuck
+          const liveInJam = (g: (typeof groupsHook.list)[number]) =>
+            g.members.filter(
+              (m) =>
+                m.in_jam &&
+                (m.user_id === me.user_id || social.isOnline(soc.presence.get(m.user_id))),
+            );
           const groupJams = groupsHook.list
-            // require someone actually in_jam: a lingering jam_started_at with
-            // no members (simultaneous-leave race) is a ghost, not a jam
-            .filter((g) => g.group.jam_started_at && g.members.some((m) => m.in_jam))
-            .map((g) => ({
-              key: `g${g.group.id}`,
-              title: g.group.name,
-              task: g.group.jam_task ?? '',
-              count: g.members.filter((m) => m.in_jam).length,
-              avatars: g.members
-                .filter((m) => m.in_jam)
-                .map((m) => ({ name: m.username, avatar: m.avatar })),
-              onClick: () => openGroup(g.group.id),
-            }));
+            .filter((g) => g.group.jam_started_at && liveInJam(g).length > 0)
+            .map((g) => {
+              const live = liveInJam(g);
+              return {
+                key: `g${g.group.id}`,
+                title: g.group.name,
+                task: g.group.jam_task ?? '',
+                count: live.length,
+                avatars: live.map((m) => ({ name: m.username, avatar: m.avatar })),
+                onClick: () => openGroup(g.group.id),
+              };
+            });
           const friendJams = state.friends
             .map((f) => ({ f, row: soc.presence.get(f.userId) }))
             .filter(({ row }) => social.isLive(row) && row?.jam_members)
@@ -986,6 +993,7 @@ export function FriendsPage({
               myUserId={me.user_id}
               friends={state.friends}
               isLive={(uid) => social.isLive(soc.presence.get(uid))}
+              isOnline={(uid) => social.isOnline(soc.presence.get(uid))}
               refetchKey={groupsHook.tick}
               onError={onError}
               onBack={() => setGroupOpen(null)}

@@ -217,6 +217,26 @@ export async function maybeEndGroupJam(groupId: number): Promise<void> {
   }
 }
 
+/**
+ * Boot-time self-heal: if I'm flagged in_jam anywhere but I'm NOT actually in a
+ * session (app was force-closed mid-jam last time → orphan flag → "ghost jam"),
+ * clear my flag and end any now-empty jam.
+ */
+export async function clearOrphanJamFlags(): Promise<void> {
+  const user = await currentUser();
+  if (!user) return;
+  const { data } = await supabase
+    .from('group_members')
+    .select('group_id')
+    .eq('user_id', user.id)
+    .eq('in_jam', true);
+  const groupIds = ((data ?? []) as { group_id: number }[]).map((r) => r.group_id);
+  for (const gid of groupIds) {
+    await setJamMembership(gid, false);
+    await maybeEndGroupJam(gid);
+  }
+}
+
 // ---------- group messages ----------
 
 export async function listGroupMessages(groupId: number, limit = 80): Promise<GroupMessage[]> {

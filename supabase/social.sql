@@ -109,11 +109,25 @@ alter table public.presence add column if not exists app_version text;
 
 alter table public.presence enable row level security;
 
+-- groupmates share presence too (a group jam must know who's actually alive,
+-- even when two members never friended each other)
+create or replace function public.shares_group_with(other uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select exists (
+    select 1 from group_members a
+    join group_members b on a.group_id = b.group_id
+    where a.user_id = auth.uid() and b.user_id = other
+  );
+$$;
+revoke all on function public.shares_group_with(uuid) from public;
+grant execute on function public.shares_group_with(uuid) to authenticated;
+
 drop policy if exists presence_select on public.presence;
 create policy presence_select on public.presence
   for select to authenticated
   using (
     auth.uid() = user_id
+    or public.shares_group_with(user_id)
     or exists (
       select 1 from public.friendships f
       where f.status = 'accepted'
