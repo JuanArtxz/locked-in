@@ -170,7 +170,7 @@ function FriendProfile({
   const [badgeInfo, setBadgeInfo] = useState<Badge | null>(null);
 
   const row = soc.presence.get(friend.userId);
-  const status = social.friendStatus(row);
+  const status = soc.statusOf(friend.userId);
   const live = status === 'focusing';
   const wk = social.weekKey();
   const weekSec = row && row.week_key === wk ? row.week_sec : 0;
@@ -659,7 +659,7 @@ export function FriendsPage({
           )}
           {state.friends.map((f) => {
             const row = soc.presence.get(f.userId);
-            const status = social.friendStatus(row);
+            const status = soc.statusOf(f.userId);
             const active = chatting === f.userId || viewing === f.userId;
             return (
               <div
@@ -901,7 +901,7 @@ export function FriendsPage({
         {chattingFriend ? (
           (() => {
             const presRow = soc.presence.get(chattingFriend.userId);
-            const chatStatus = social.friendStatus(presRow);
+            const chatStatus = soc.statusOf(chattingFriend.userId);
             const live = chatStatus === 'focusing';
             const focusSec =
               live && presRow?.started_at

@@ -145,7 +145,7 @@ export function FriendsBar({ social: soc, onOpenFriends, onOpenChat, unread, jam
         ) : (
           state.friends.map((f) => {
             const row = soc.presence.get(f.userId);
-            const status = social.friendStatus(row);
+            const status = soc.statusOf(f.userId);
             const live = status === 'focusing';
             return (
               <div

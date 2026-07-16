@@ -217,6 +217,42 @@ function AppShell() {
     if (members.length > 0) focusRef.current.syncJamMembers(members);
   }, [groups.list, activeGroupJamId]);
 
+  // reconcile ANY jam (1:1 OR group) against live presence: prune members who
+  // stopped focusing so leaving propagates to the other side. The 1:1 jam had
+  // no server state, so a "I left" never reached the peer — this fixes that by
+  // making everyone derive the roster from who's actually still focusing.
+  const jamSeenRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const jam = focus.jam;
+    if (!jam) {
+      jamSeenRef.current.clear();
+      return;
+    }
+    const me = myUsernameRef.current;
+    const uidOf = (u: string) => {
+      const fr = social.state?.friends.find((f) => f.username === u);
+      if (fr) return fr.userId;
+      const gm = groups.list.flatMap((g) => g.members).find((m) => m.username === u);
+      return gm?.user_id ?? null;
+    };
+    const live = jam.members.filter((u) => {
+      if (u === me) return true;
+      const uid = uidOf(u);
+      if (!uid) return true; // unknown identity → keep, can't judge
+      const row = social.presence.get(uid);
+      // seen-live-first: don't prune someone we've never observed focusing yet
+      // (their presence may not have loaded right after they joined)
+      if (socialLib.isLive(row)) {
+        jamSeenRef.current.add(u);
+        return true;
+      }
+      return !jamSeenRef.current.has(u); // seen before & now not live → prune
+    });
+    if (live.length !== jam.members.length) {
+      focusRef.current.syncJamMembers(live);
+    }
+  }, [focus.jam, social.presence, social.state, groups.list]);
+
   // presence heartbeat: my session state → cloud, on every phase change and
   // every 60s while the app runs. Friends treat rows older than ~2.5min as
   // offline, so closing the app (no explicit "stop") self-heals.

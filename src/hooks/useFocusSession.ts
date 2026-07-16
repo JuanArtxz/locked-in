@@ -378,6 +378,13 @@ export function useFocusSession(opts: FocusOptions): UseFocusSession {
       const same =
         next.length === jam.members.length && next.every((m) => jam.members.includes(m));
       if (same) return;
+      // everyone else left → I'm no longer in a jam, keep focusing solo
+      if (next.length <= 1) {
+        db.setSessionJamMembers(activeSession.id, []).catch((err) => setError(String(err)));
+        setJam(null);
+        setActiveSession({ ...activeSession, jam_members: null });
+        return;
+      }
       db.setSessionJamMembers(activeSession.id, next).catch((err) => setError(String(err)));
       setJam({ startedAt: jam.startedAt, members: next });
       setActiveSession({ ...activeSession, jam_members: JSON.stringify(next) });

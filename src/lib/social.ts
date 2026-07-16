@@ -279,9 +279,24 @@ export function isOnline(row: PresenceRow | undefined): boolean {
 
 export type FriendStatus = 'focusing' | 'online' | 'away';
 
+/**
+ * Status from the DB presence row alone (legacy fallback). Prefer the
+ * realtime-aware variant when an online-id set is available.
+ */
 export function friendStatus(row: PresenceRow | undefined): FriendStatus {
   if (isLive(row)) return 'focusing';
   if (isOnline(row)) return 'online';
+  return 'away';
+}
+
+/** Focusing from the DB row; online/away from the realtime channel. */
+export function friendStatusRT(
+  row: PresenceRow | undefined,
+  userId: string,
+  onlineIds: Set<string>,
+): FriendStatus {
+  if (isLive(row)) return 'focusing';
+  if (onlineIds.has(userId) || isOnline(row)) return 'online';
   return 'away';
 }
 
@@ -404,6 +419,39 @@ export async function fetchPendingJamInvites(): Promise<JamInvite[]> {
 export async function fetchJamInvite(id: number): Promise<JamInvite | null> {
   const { data } = await supabase.from('jam_invites').select('*').eq('id', id).maybeSingle();
   return (data as JamInvite | null) ?? null;
+}
+
+/**
+ * Native realtime "who's connected" — the correct source for online/away.
+ * Every signed-in client tracks its userId on a shared channel; presence is
+ * derived from the live websocket, so it's instant and immune to clock skew
+ * (the DB heartbeat's timestamp comparison was neither). Focusing still comes
+ * from the DB row; this only answers online-vs-away.
+ */
+export async function subscribeOnline(
+  onChange: (onlineIds: Set<string>) => void,
+): Promise<() => void> {
+  const user = await currentUser();
+  const channel = supabase.channel('online-presence', {
+    config: { presence: { key: user?.id ?? 'anon' } },
+  });
+  channel
+    .on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState<{ uid: string }>();
+      const ids = new Set<string>();
+      for (const key of Object.keys(state)) {
+        for (const entry of state[key]) if (entry.uid) ids.add(entry.uid);
+      }
+      onChange(ids);
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED' && user) {
+        channel.track({ uid: user.id }).catch(() => {});
+      }
+    });
+  return () => {
+    supabase.removeChannel(channel).catch(() => {});
+  };
 }
 
 export function subscribeJamInvites(onChange: () => void): () => void {
