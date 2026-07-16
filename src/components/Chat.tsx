@@ -71,8 +71,8 @@ function sameBlock(a: { mine: boolean; created_at: string }, b: { mine: boolean;
 /** Centered "Hoje / Ontem / 12 jul" chip between day blocks. */
 export function DaySeparator({ iso }: { iso: string }) {
   return (
-    <div className="flex justify-center py-2">
-      <span className="rounded-full border border-border bg-surface px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-text-faint">
+    <div className="flex justify-center py-3.5">
+      <span className="rounded-full border border-border bg-surface px-3.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-text-faint">
         {dayLabel(iso)}
       </span>
     </div>
@@ -500,7 +500,7 @@ export function ChatView({
       <div
         ref={listRef}
         onScroll={onListScroll}
-        className="chat-backdrop min-h-0 flex-1 overflow-y-auto px-4 py-3"
+        className="chat-backdrop min-h-0 flex-1 overflow-y-auto px-5 py-4"
       >
         {messages === null && (
           <div className="flex justify-center py-8">
@@ -529,7 +529,7 @@ export function ChatView({
                 else msgRefs.current.delete(m.id);
               }}
               className={`group flex ${m.mine ? 'justify-end' : 'justify-start'} ${
-                firstOfGroup ? 'mt-2.5' : 'mt-[3px]'
+                firstOfGroup ? 'mt-4' : 'mt-1'
               } ${
                 initialMaxIdRef.current !== null && m.id > initialMaxIdRef.current
                   ? 'animate-msg-in-spring'
@@ -537,7 +537,7 @@ export function ChatView({
               } ${flashId === m.id ? 'flash-msg rounded-2xl' : ''}`}
             >
               <div
-                className={`flex max-w-[78%] items-end gap-2 ${m.mine ? 'flex-row-reverse' : ''}`}
+                className={`flex max-w-[78%] items-end gap-2.5 ${m.mine ? 'flex-row-reverse' : ''}`}
               >
                 {!m.mine && (
                   <div className="w-7 shrink-0">{lastOfGroup && <AvatarSm friend={friend} />}</div>
@@ -606,7 +606,7 @@ export function ChatView({
                     </div>
                   ) : (
                     <div
-                      className={`bubble-shadow relative rounded-2xl border-2 px-3.5 py-2 text-sm font-medium leading-relaxed ${
+                      className={`bubble-shadow relative rounded-2xl border-2 px-4 py-2.5 text-sm font-medium leading-relaxed ${
                         m.mine
                           ? `border-border-strong bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'} ${lastOfGroup ? 'rounded-br-md' : 'rounded-br-md'}`
                           : `border-border-strong bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'} ${lastOfGroup ? 'rounded-bl-md' : 'rounded-bl-md'}`
@@ -774,11 +774,11 @@ export function ChatView({
         })}
 
         {peerTyping && (
-          <div className="animate-msg-in flex items-end gap-2">
+          <div className="animate-msg-in mt-4 flex items-end gap-2.5">
             <div className="w-7 shrink-0">
               <AvatarSm friend={friend} />
             </div>
-            <div className="bubble-shadow rounded-2xl rounded-bl-md border-2 border-border-strong bg-surface px-4 py-2.5">
+            <div className="bubble-shadow rounded-2xl rounded-bl-md border-2 border-border-strong bg-surface px-4 py-3">
               <span className="flex gap-1">
                 {[0, 1, 2].map((d) => (
                   <span
@@ -847,7 +847,7 @@ export function ChatView({
           e.preventDefault();
           send();
         }}
-        className="flex shrink-0 items-center gap-2 border-t border-border p-3"
+        className="flex shrink-0 items-center gap-2.5 border-t border-border px-4 py-3.5"
       >
         {/* clip menu: emoji / image / jam */}
         <div className="relative" data-pop>

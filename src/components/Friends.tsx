@@ -931,7 +931,7 @@ export function FriendsPage({
   return (
     <div className="flex h-full min-h-0">
       {/* LEFT: friends column */}
-      <aside className="scrollbar-none flex w-[330px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border p-3">
+      <aside className="scrollbar-none flex w-[330px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-border p-4">
         <div className="flex items-start justify-between gap-2 px-1">
           <div className="min-w-0">
             <h1 className="text-base font-extrabold tracking-tight text-text">{t('fr.title')}</h1>

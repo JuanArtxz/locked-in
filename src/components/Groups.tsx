@@ -476,7 +476,7 @@ export function GroupView({
       )}
 
       {/* messages */}
-      <div className="chat-backdrop min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div className="chat-backdrop min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {messages === null && (
           <div className="flex justify-center py-8">
             <span className="skeleton h-5 w-40">.</span>
@@ -516,7 +516,7 @@ export function GroupView({
               {newDay && <DaySeparator iso={m.created_at} />}
               <div
                 className={`flex ${m.mine ? 'justify-end' : 'justify-start'} ${
-                  firstOfGroup ? 'mt-2 animate-msg-in' : 'mt-[3px]'
+                  firstOfGroup ? 'mt-4 animate-msg-in' : 'mt-1'
                 }`}
               >
                 <div className={`max-w-[80%] ${m.mine ? 'items-end' : 'items-start'}`}>
@@ -526,7 +526,7 @@ export function GroupView({
                     </div>
                   )}
                   <div
-                    className={`bubble-shadow rounded-2xl border-2 border-border-strong px-3.5 py-2 text-sm font-medium leading-relaxed ${
+                    className={`bubble-shadow rounded-2xl border-2 border-border-strong px-4 py-2.5 text-sm font-medium leading-relaxed ${
                       m.mine
                         ? `rounded-br-md bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'}`
                         : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
@@ -555,7 +555,7 @@ export function GroupView({
           e.preventDefault();
           send();
         }}
-        className="flex shrink-0 items-center gap-2 border-t border-border p-3"
+        className="flex shrink-0 items-center gap-2.5 border-t border-border px-4 py-3.5"
       >
         <input
           value={draft}
