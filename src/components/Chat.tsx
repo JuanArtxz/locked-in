@@ -306,7 +306,25 @@ export function ChatView({
   const reload = useCallback(() => {
     chat
       .listConversation(friend.userId)
-      .then(setMessages)
+      .then(async (msgs) => {
+        // decode every image BEFORE the first paint — an <img> without known
+        // dimensions grows after layout and each growth was a visible "bump"
+        // while the view re-anchored to the bottom
+        await Promise.all(
+          msgs
+            .filter((m) => m.kind === 'image' && m.text)
+            .map(
+              (m) =>
+                new Promise<void>((res) => {
+                  const img = new Image();
+                  img.onload = () => res();
+                  img.onerror = () => res();
+                  img.src = m.text as string;
+                }),
+            ),
+        );
+        setMessages(msgs);
+      })
       .catch((err) => onError(String(err)));
   }, [friend.userId, onError]);
 
@@ -509,6 +527,7 @@ export function ChatView({
       <div
         ref={listRef}
         onScroll={onListScroll}
+        style={{ overflowAnchor: 'none', scrollbarGutter: 'stable' }}
         className="chat-backdrop min-h-0 flex-1 overflow-y-auto px-5 py-4"
       >
         {messages === null && (
