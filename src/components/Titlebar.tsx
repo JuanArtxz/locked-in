@@ -18,6 +18,8 @@ interface TitlebarProps {
   signedIn: boolean;
   userName: string | null;
   onOpenProfile: () => void;
+  /** my own session state — mirrors the green ring friends see */
+  focusing: boolean;
 }
 
 /** Instagram-style empty avatar: a little head-and-shoulders silhouette. */
@@ -64,6 +66,7 @@ export function Titlebar({
   signedIn,
   userName,
   onOpenProfile,
+  focusing,
 }: TitlebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -82,7 +85,9 @@ export function Titlebar({
 
   const avatarCircle = (size: string, iconSize: number) => (
     <div
-      className={`flex ${size} items-center justify-center overflow-hidden rounded-full border-2 border-border-strong bg-surface text-text-dim`}
+      className={`flex ${size} items-center justify-center overflow-hidden rounded-full border-2 bg-surface text-text-dim ${
+        focusing ? 'border-accent' : 'border-border-strong'
+      }`}
     >
       {me?.avatar_b64 ? (
         <img src={me.avatar_b64} alt="" className="h-full w-full object-cover" />

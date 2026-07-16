@@ -12,6 +12,8 @@ import { HabitsPage } from './components/Habits';
 import { Home } from './components/Home';
 import { Log } from './components/Log';
 import { Stats } from './components/Stats';
+import { CommandPalette } from './components/CommandPalette';
+import type { Command } from './components/CommandPalette';
 import { ProfilePage } from './components/Profile';
 import { SettingsScreen } from './components/Settings';
 import { Titlebar } from './components/Titlebar';
@@ -104,6 +106,24 @@ function AppShell() {
   const [routineSub, setRoutineSub] = useState<'checkin' | 'habits'>('checkin');
   const [analyticsSub, setAnalyticsSub] = useState<'week' | 'stats' | 'log'>('week');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // keyboard: Ctrl+K command palette, Ctrl+1..5 tab jump
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
+      if (e.ctrlKey && e.key >= '1' && e.key <= String(TABS.length)) {
+        e.preventDefault();
+        setTab(TABS[Number(e.key) - 1].id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // boot splash: shown at least 5s while everything loads behind it
   const [splashDone, setSplashDone] = useState(false);
@@ -787,7 +807,68 @@ function AppShell() {
         signedIn={signedIn}
         userName={settingsHook.settings?.user_name?.trim() || null}
         onOpenProfile={() => setTab('profile')}
+        focusing={focus.phase === 'focusing'}
       />
+
+      {paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          commands={
+            [
+              ...TABS.map((tb, i) => ({
+                id: tb.id,
+                label: t(tb.labelKey),
+                hint: `Ctrl+${i + 1}`,
+                run: () => setTab(tb.id),
+              })),
+              { id: 'profile', label: t('menu.profile'), run: () => setTab('profile') },
+              { id: 'settings', label: t('tab.settings'), run: () => setTab('settings') },
+              {
+                id: 'focus',
+                label: t('cmd.focus'),
+                run: () => setTab('home'),
+              },
+              {
+                id: 'addfriend',
+                label: t('cmd.addfriend'),
+                run: () => setTab('friends'),
+              },
+              {
+                id: 'checkin',
+                label: t('tab.checkin'),
+                run: () => {
+                  setTab('routine');
+                  setRoutineSub('checkin');
+                },
+              },
+              {
+                id: 'habits',
+                label: t('tab.habits'),
+                run: () => {
+                  setTab('routine');
+                  setRoutineSub('habits');
+                },
+              },
+              {
+                id: 'stats',
+                label: t('tab.stats'),
+                run: () => {
+                  setTab('analytics');
+                  setAnalyticsSub('stats');
+                },
+              },
+              {
+                id: 'log',
+                label: t('tab.log'),
+                run: () => {
+                  setTab('analytics');
+                  setAnalyticsSub('log');
+                },
+              },
+            ] satisfies Command[]
+          }
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
       <main key={tab} className="animate-fade-up min-h-0 flex-1">

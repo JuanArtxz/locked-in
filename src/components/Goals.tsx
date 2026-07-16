@@ -3,6 +3,7 @@ import * as db from '../lib/db';
 import { dateLocale, t } from '../lib/i18n';
 import { formatDurationShort } from '../lib/time';
 import type { ProjectGoal } from '../types';
+import { Mascot } from './Mascot';
 
 interface GoalsProps {
   onError: (m: string) => void;
@@ -173,8 +174,8 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
         )}
 
         {rows.length === 0 && !adding && (
-          <div className="chunk flex flex-col items-center gap-1.5 py-12 text-center">
-            <span className="text-2xl">🎯</span>
+          <div className="chunk flex flex-col items-center gap-2 py-12 text-center">
+            <Mascot mood="think" size={56} />
             <span className="text-sm font-semibold text-text-faint">{t('goals.empty')}</span>
           </div>
         )}

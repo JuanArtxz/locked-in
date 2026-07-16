@@ -5,6 +5,7 @@ import { t } from '../lib/i18n';
 import * as social from '../lib/social';
 import { formatDurationShort } from '../lib/time';
 import type { SocialHook } from '../hooks/useSocial';
+import { useCountUp } from '../hooks/useCountUp';
 import type { ProjectBreakdown } from '../types';
 import { PersonIcon } from './Titlebar';
 
@@ -115,6 +116,7 @@ export function ProfilePage({
   const friends = soc.state?.friends ?? [];
   const avgPerActiveDay = an && an.activeDays > 0 ? an.totalSec / an.activeDays : 0;
   const maxProj = recentProjects[0]?.total_sec || 1;
+  const animatedTotal = useCountUp(an?.totalSec ?? 0, 1100);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -177,7 +179,11 @@ export function ProfilePage({
         {/* big focus number */}
         <div className="chunk p-5">
           <div className="font-mono text-[44px] font-bold leading-none tabular-nums text-accent">
-            {an ? formatDurationShort(an.totalSec) : '…'}
+            {an ? (
+              formatDurationShort(animatedTotal)
+            ) : (
+              <span className="skeleton h-11 w-40">.</span>
+            )}
           </div>
           <div className="mt-1.5 text-xs font-bold uppercase tracking-wide text-text-faint">
             {t('profile.hours')}
@@ -188,7 +194,7 @@ export function ProfilePage({
         <div className="grid grid-cols-3 gap-3">
           <div className="chunk px-3 py-4 text-center">
             <div className="font-mono text-xl font-bold tabular-nums text-text">
-              {an ? an.sessionCount : '…'}
+              {an ? an.sessionCount : <span className="skeleton h-6 w-10">.</span>}
             </div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-text-faint">
               {t('profile.sessions')}
@@ -196,7 +202,7 @@ export function ProfilePage({
           </div>
           <div className="chunk px-3 py-4 text-center">
             <div className="font-mono text-xl font-bold tabular-nums text-text">
-              {an ? formatDurationShort(avgPerActiveDay) : '…'}
+              {an ? formatDurationShort(avgPerActiveDay) : <span className="skeleton h-6 w-12">.</span>}
             </div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-text-faint">
               {t('profile.avgday')}
@@ -204,7 +210,7 @@ export function ProfilePage({
           </div>
           <div className="chunk px-3 py-4 text-center">
             <div className="font-mono text-xl font-bold tabular-nums text-text">
-              {an ? formatDurationShort(an.bestDaySec) : '…'}
+              {an ? formatDurationShort(an.bestDaySec) : <span className="skeleton h-6 w-12">.</span>}
             </div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-text-faint">
               {t('profile.bestday')}

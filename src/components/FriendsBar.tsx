@@ -2,6 +2,7 @@ import { t } from '../lib/i18n';
 import { formatDurationShort } from '../lib/time';
 import * as social from '../lib/social';
 import type { SocialHook } from '../hooks/useSocial';
+import { Mascot } from './Mascot';
 
 interface FriendsBarProps {
   social: SocialHook;
@@ -33,8 +34,8 @@ export function FriendsBar({ social: soc, onOpenFriends }: FriendsBarProps) {
 
       <div className="scrollbar-none min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-1">
         {state.friends.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center">
-            <span className="text-2xl">👥</span>
+          <div className="flex h-full flex-col items-center justify-center gap-2.5 px-3 text-center">
+            <Mascot mood="think" size={48} />
             <span className="text-xs font-bold leading-relaxed text-text-faint">
               {t('fr.bar.empty')}
             </span>

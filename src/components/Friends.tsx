@@ -304,8 +304,8 @@ export function FriendsPage({ signedIn, social: soc, onError, onJoinFocus }: Fri
             {t('fr.friends')} ({state.friends.length})
           </div>
           {state.friends.length === 0 && (
-            <div className="flex flex-col items-center gap-1 py-6 text-center">
-              <span className="text-2xl">👥</span>
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <Mascot mood="think" size={52} />
               <span className="text-sm font-semibold text-text-faint">{t('fr.empty')}</span>
             </div>
           )}
