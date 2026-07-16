@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { BADGES, nextBadge } from '../lib/badges';
 import * as db from '../lib/db';
-import { t } from '../lib/i18n';
+import { cleanProfanity } from '../lib/filter';
+import { getLang, t } from '../lib/i18n';
 import * as social from '../lib/social';
 import { formatDurationShort } from '../lib/time';
 import type { SocialHook } from '../hooks/useSocial';
@@ -75,7 +77,32 @@ export function ProfilePage({
   const [an, setAn] = useState<Analytics | null>(null);
   const [recentProjects, setRecentProjects] = useState<ProjectBreakdown[]>([]);
   const [busy, setBusy] = useState(false);
+  const [bio, setBio] = useState('');
+  const [bioDirty, setBioDirty] = useState(false);
+  const [bioSaving, setBioSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setBio(me?.bio ?? '');
+    setBioDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.bio]);
+
+  async function saveBio() {
+    setBioSaving(true);
+    try {
+      const clean = cleanProfanity(bio);
+      const err = await social.updateBio(clean);
+      if (err) onError(err);
+      else {
+        setBio(clean);
+        setBioDirty(false);
+        soc.refresh();
+      }
+    } finally {
+      setBioSaving(false);
+    }
+  }
 
   useEffect(() => {
     const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
@@ -173,6 +200,76 @@ export function ProfilePage({
             </div>
           </div>
         </div>
+
+        {/* bio — free-form, profanity-filtered */}
+        {signedIn && (
+          <div className="chunk p-4">
+            <div className="mb-1.5 text-xs font-extrabold uppercase tracking-wide text-text-dim">
+              {t('bio.title')}
+            </div>
+            <textarea
+              value={bio}
+              onChange={(e) => {
+                setBio(e.target.value.slice(0, 140));
+                setBioDirty(true);
+              }}
+              placeholder={t('bio.placeholder')}
+              rows={2}
+              className="chunk-input w-full resize-none px-3 py-2.5 text-sm font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+            />
+            <div className="mt-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-text-faint">{bio.length}/140</span>
+              {bioDirty && (
+                <button
+                  type="button"
+                  disabled={bioSaving}
+                  onClick={saveBio}
+                  className="chunk-btn chunk-btn-accent px-4 py-1.5 text-xs"
+                >
+                  {bioSaving ? '…' : t('bio.save')}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* badges — lifetime focus milestones */}
+        {an && (
+          <div className="chunk p-4">
+            <div className="mb-2 text-xs font-extrabold uppercase tracking-wide text-text-dim">
+              {t('badges.title')}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {BADGES.map((b) => {
+                const unlocked = an.totalSec / 3600 >= b.hours;
+                return (
+                  <span
+                    key={b.hours}
+                    title={getLang() === 'en' ? b.labelEn : b.labelPt}
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 text-lg ${
+                      unlocked
+                        ? 'border-accent bg-accent-dim'
+                        : 'border-border opacity-30 grayscale'
+                    }`}
+                  >
+                    {b.icon}
+                  </span>
+                );
+              })}
+            </div>
+            {nextBadge(an.totalSec) && (
+              <div className="mt-2 text-[11px] font-medium text-text-faint">
+                {t(
+                  'badges.next',
+                  nextBadge(an.totalSec)!.icon,
+                  getLang() === 'en'
+                    ? nextBadge(an.totalSec)!.labelEn
+                    : nextBadge(an.totalSec)!.labelPt,
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* big focus number */}
         <div className="chunk p-5">

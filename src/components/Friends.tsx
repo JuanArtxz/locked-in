@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { t } from '../lib/i18n';
+import { unlockedBadges } from '../lib/badges';
+import { getLang, t } from '../lib/i18n';
 import { formatDurationShort } from '../lib/time';
 import * as social from '../lib/social';
 import type { FriendEntry, PresenceRow } from '../lib/social';
@@ -216,8 +217,33 @@ function FriendProfile({
             <div className={`mt-1 text-sm font-semibold ${statusText(status)}`}>
               {statusLineFor(status, row)}
             </div>
+            {friend.bio && (
+              <p className="mt-1.5 max-w-xs text-xs font-medium leading-relaxed text-text-dim">
+                {friend.bio}
+              </p>
+            )}
           </div>
         </div>
+
+        {/* badges from their lifetime focus */}
+        {row && unlockedBadges(row.total_sec ?? 0).length > 0 && (
+          <div className="chunk p-4">
+            <div className="mb-2 text-xs font-extrabold uppercase tracking-wide text-text-dim">
+              {t('badges.title')}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {unlockedBadges(row.total_sec ?? 0).map((b) => (
+                <span
+                  key={b.hours}
+                  title={getLang() === 'en' ? b.labelEn : b.labelPt}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-accent bg-accent-dim text-lg"
+                >
+                  {b.icon}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* big week number */}
         <div className="chunk p-5">

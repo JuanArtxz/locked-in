@@ -5,6 +5,7 @@
 // here assumes the worst about the client and lets the server say no.
 
 import { currentUser, supabase } from './cloud';
+import { hasProfanity } from './filter';
 
 export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 
@@ -13,6 +14,7 @@ export interface Profile {
   username: string;
   avatar_b64?: string | null;
   e2e_pub?: string | null;
+  bio?: string | null;
 }
 
 export interface FriendEntry {
@@ -22,6 +24,7 @@ export interface FriendEntry {
   avatar: string | null;
   /** current message public key — null means their app predates messaging */
   e2ePub: string | null;
+  bio: string | null;
 }
 
 export interface FriendsState {
@@ -44,6 +47,8 @@ export interface PresenceRow {
   app_version: string | null;
   /** JSON [{n: project, s: seconds}] — only when the user made projects public */
   public_projects: string | null;
+  /** lifetime focused seconds — drives the badges on the profile */
+  total_sec: number;
 }
 
 /** A presence row older than this is treated as offline (app closed/crashed). */
@@ -72,10 +77,21 @@ export async function getMyProfile(): Promise<Profile | null> {
   if (!user) return null;
   const { data } = await supabase
     .from('profiles')
-    .select('user_id, username, avatar_b64, e2e_pub')
+    .select('user_id, username, avatar_b64, e2e_pub, bio')
     .eq('user_id', user.id)
     .maybeSingle();
   return (data as Profile | null) ?? null;
+}
+
+/** Saves the profile bio (already profanity-cleaned by the caller). */
+export async function updateBio(bio: string): Promise<string | null> {
+  const user = await currentUser();
+  if (!user) return 'not signed in';
+  const { error } = await supabase
+    .from('profiles')
+    .update({ bio: bio.trim().slice(0, 140) || null })
+    .eq('user_id', user.id);
+  return error ? error.message : null;
 }
 
 /** Sets (or clears) the profile photo — a small jpeg data-url. */
@@ -95,6 +111,7 @@ export type ClaimResult = 'ok' | 'taken' | 'invalid' | 'error';
 export async function claimUsername(name: string): Promise<ClaimResult> {
   const username = name.trim();
   if (!USERNAME_RE.test(username)) return 'invalid';
+  if (hasProfanity(username)) return 'invalid';
   const user = await currentUser();
   if (!user) return 'error';
   const { error } = await supabase
@@ -138,7 +155,7 @@ export async function loadFriendsState(): Promise<FriendsState> {
   if (otherIds.length > 0) {
     const { data: profs } = await supabase
       .from('profiles')
-      .select('user_id, username, avatar_b64, e2e_pub')
+      .select('user_id, username, avatar_b64, e2e_pub, bio')
       .in('user_id', otherIds);
     for (const p of (profs ?? []) as ProfileWithKey[]) profiles.set(p.user_id, p);
   }
@@ -152,6 +169,7 @@ export async function loadFriendsState(): Promise<FriendsState> {
       username: p?.username ?? '???',
       avatar: p?.avatar_b64 ?? null,
       e2ePub: p?.e2e_pub ?? null,
+      bio: p?.bio ?? null,
     };
   };
 
@@ -214,6 +232,7 @@ export interface PublishPresenceInput {
   appVersion: string;
   /** already-serialized top projects, or null when the user keeps them private */
   publicProjects: string | null;
+  totalSec: number;
 }
 
 export async function publishPresence(p: PublishPresenceInput): Promise<void> {
@@ -229,6 +248,7 @@ export async function publishPresence(p: PublishPresenceInput): Promise<void> {
     updated_at: new Date().toISOString(),
     app_version: p.appVersion,
     public_projects: p.publicProjects,
+    total_sec: Math.max(0, Math.floor(p.totalSec)),
   });
 }
 

@@ -3,6 +3,7 @@
 
 import { currentUser, supabase } from './cloud';
 import * as e2e from './e2e';
+import { cleanProfanity } from './filter';
 
 export interface MessageRow {
   id: number;
@@ -51,7 +52,7 @@ export async function sendMessage(
 ): Promise<SendResult> {
   const user = await currentUser();
   if (!user) return 'error';
-  const body = plaintext.slice(0, MESSAGE_MAX_CHARS);
+  const body = cleanProfanity(plaintext).slice(0, MESSAGE_MAX_CHARS);
   const theirPub = await fetchFriendPub(recipientId);
   if (!theirPub) return 'friend-no-key';
   const env = await e2e.encryptTo(body, theirPub);

@@ -194,6 +194,7 @@ function AppShell() {
             projs.slice(0, 5).map((p) => ({ n: p.project, s: p.total_sec })),
           );
         }
+        const life = await db.getLifetimeStats().catch(() => ({ totalSec: 0 }));
         if (cancelled) return;
         await socialLib.publishPresence({
           focusing,
@@ -202,6 +203,7 @@ function AppShell() {
           weekSec: saved + (focusing || phase === 'paused' ? elapsedSec : 0),
           appVersion,
           publicProjects,
+          totalSec: life.totalSec + (focusing || phase === 'paused' ? elapsedSec : 0),
         });
       } catch {
         // offline — the next beat wins
@@ -674,8 +676,27 @@ function AppShell() {
       }
     }).then((u) => unlisteners.push(u));
 
+    // a session counts as auto-trackable when the watcher started it OR when
+    // its task matches the work-app list (e.g. started via the "continue:
+    // Roblox Studio" button) — those pause/resume with the app exactly the same
+    const sessionIsAutoLike = () => {
+      if (autoSessionRef.current) return true;
+      const task = focusRef.current.activeSession?.task?.toLowerCase();
+      const list = settingsRef.current?.autotrack_apps;
+      if (!task || !list || !settingsRef.current?.autotrack_enabled) return false;
+      return list
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+        .some((entry) =>
+          entry.includes(' ')
+            ? entry.split(/\s+/).every((w) => task.includes(w))
+            : task.includes(entry),
+        );
+    };
+
     listen('autotrack:away', () => {
-      if (!autoSessionRef.current) return;
+      if (!sessionIsAutoLike()) return;
       if (focusRef.current.phase !== 'focusing') return;
       autoPausedRef.current = true;
       focusRef.current.pauseSession();

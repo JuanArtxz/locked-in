@@ -308,6 +308,13 @@ end $$;
 -- on their profile to friends; null when the setting is off
 alter table public.presence add column if not exists public_projects text;
 
+-- lifetime focused seconds (drives the profile badges friends can see)
+alter table public.presence add column if not exists total_sec bigint not null default 0;
+
+-- free-form profile bio (filtered client-side before upload, capped here too)
+alter table public.profiles add column if not exists bio text
+  check (bio is null or char_length(bio) <= 140);
+
 create table if not exists public.key_backups (
   user_id uuid primary key references auth.users(id) on delete cascade,
   salt text not null,
