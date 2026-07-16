@@ -37,10 +37,9 @@ export function FriendsBar({ social: soc, onOpenFriends }: FriendsBarProps) {
   if (!state?.me) return null;
 
   function toggle() {
-    setCollapsed((c) => {
-      localStorage.setItem('friends-bar-collapsed', c ? '0' : '1');
-      return !c;
-    });
+    const next = !collapsed;
+    localStorage.setItem('friends-bar-collapsed', next ? '1' : '0');
+    setCollapsed(next);
   }
 
   const anyLive = state.friends.some((f) => social.isLive(soc.presence.get(f.userId)));

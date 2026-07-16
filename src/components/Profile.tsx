@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import * as cloud from '../lib/cloud';
 import * as db from '../lib/db';
 import { t } from '../lib/i18n';
 import * as social from '../lib/social';
@@ -71,14 +70,12 @@ export function ProfilePage({
   refreshKey,
 }: ProfileProps) {
   const me = soc.state?.me ?? null;
-  const [email, setEmail] = useState('');
   const [an, setAn] = useState<Analytics | null>(null);
   const [recentProjects, setRecentProjects] = useState<ProjectBreakdown[]>([]);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    cloud.currentUser().then((u) => setEmail(u?.email ?? ''));
     const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
     Promise.all([
       db.getLifetimeStats(),
@@ -164,7 +161,6 @@ export function ProfilePage({
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
               {me && <span className="font-bold text-accent">@{me.username}</span>}
-              {email && <span className="text-xs font-medium text-text-faint">{email}</span>}
               <button
                 type="button"
                 onClick={onOpenFriends}
