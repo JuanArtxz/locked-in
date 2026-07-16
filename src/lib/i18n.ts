@@ -247,7 +247,32 @@ const dict: Record<string, { pt: string; en: string }> = {
   'grp.admin': { pt: 'admin', en: 'admin' },
   'grp.member': { pt: 'membro', en: 'member' },
   'grp.promote': { pt: 'tornar admin', en: 'make admin' },
+  'grp.demote': { pt: 'tirar admin', en: 'remove admin' },
   'grp.kick': { pt: 'remover', en: 'remove' },
+  'grp.kick.title': { pt: 'Remover do grupo', en: 'Remove from group' },
+  'grp.kick.body': {
+    pt: '@{0} vai ser removido de "{1}". Um admin pode adicionar de novo depois.',
+    en: '@{0} will be removed from "{1}". An admin can re-add them later.',
+  },
+  'grp.demote.title': { pt: 'Tirar admin', en: 'Remove admin' },
+  'grp.demote.body': {
+    pt: '@{0} deixa de ser admin do grupo, mas continua como membro.',
+    en: '@{0} stops being a group admin but stays a member.',
+  },
+  'grp.delete.title': { pt: 'Apagar grupo', en: 'Delete group' },
+  'grp.delete.body': {
+    pt: '"{0}" some pra TODO MUNDO, com o chat junto. Não tem volta.',
+    en: '"{0}" disappears for EVERYONE, chat included. No way back.',
+  },
+  'grp.leave.title': { pt: 'Sair do grupo', en: 'Leave group' },
+  'grp.leave.body': {
+    pt: 'Você sai de "{0}". Só volta se um admin te adicionar de novo.',
+    en: 'You leave "{0}". Only an admin can bring you back.',
+  },
+  'grp.goal.modal.body': {
+    pt: 'horas somadas de todo mundo do grupo nesta semana',
+    en: "everyone's combined hours this week",
+  },
   'grp.rename': { pt: 'renomear', en: 'rename' },
   'grp.leave': { pt: 'Sair do grupo', en: 'Leave group' },
   'grp.delete': { pt: 'Apagar grupo', en: 'Delete group' },

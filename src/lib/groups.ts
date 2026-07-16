@@ -170,6 +170,15 @@ export async function promoteMember(groupId: number, userId: string): Promise<st
   return error ? error.message : null;
 }
 
+export async function demoteMember(groupId: number, userId: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('group_members')
+    .update({ is_admin: false })
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  return error ? error.message : null;
+}
+
 export async function leaveGroup(groupId: number): Promise<void> {
   const user = await currentUser();
   if (!user) return;

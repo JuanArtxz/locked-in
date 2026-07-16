@@ -3,15 +3,16 @@
 @import '@fontsource-variable/jetbrains-mono';
 
 @theme {
-  --color-bg: #0a0a0b;
-  --color-surface: #141416;
-  --color-surface-2: #1a1a1d;
-  --color-surface-hover: #1e1e21;
-  --color-border: #232326;
-  --color-border-strong: #2e2e33;
-  --color-text: #ededef;
-  --color-text-dim: #8a8a93;
-  --color-text-faint: #55555e;
+  /* ~20% lighter across the board — "tudo MUITO escuro" feedback */
+  --color-bg: #121215;
+  --color-surface: #1c1c20;
+  --color-surface-2: #222227;
+  --color-surface-hover: #28282e;
+  --color-border: #2e2e34;
+  --color-border-strong: #3a3a42;
+  --color-text: #f2f2f4;
+  --color-text-dim: #9c9ca6;
+  --color-text-faint: #6b6b76;
   --color-accent: #d4ff3f;
   --color-accent-dim: rgba(212, 255, 63, 0.12);
   --color-warn: #fbbf24;

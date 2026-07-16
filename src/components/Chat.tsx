@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useToast } from '../hooks/useToast';
 import * as chat from '../lib/chat';
 import type { DecryptedMessage, TypingChannel } from '../lib/chat';
@@ -321,20 +321,29 @@ export function ChatView({
     initialMaxIdRef.current = messages.reduce((acc, m) => Math.max(acc, m.id), 0);
   }, [messages]);
 
+  // direct scrollTop assignment BEFORE paint — scrollIntoView after paint was
+  // the visible "conversation adjusting itself" bounce on open
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = listRef.current;
+    if (!el) return;
+    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    else el.scrollTop = el.scrollHeight;
+  }, []);
+
   // smart scroll: follow the bottom while you're there; scrolled up + new
   // incoming message → floating "new messages" chip instead of yanking you down
-  useEffect(() => {
+  useLayoutEffect(() => {
     const last = messages?.[messages.length - 1];
     const lastId = last?.id ?? null;
     const grew = lastId !== null && lastId !== lastMsgIdRef.current;
     lastMsgIdRef.current = lastId;
     if (atBottomRef.current || (grew && last?.mine)) {
-      bottomRef.current?.scrollIntoView({ block: 'end' });
+      scrollToBottom();
       setNewCount(0);
     } else if (grew && last && !last.mine) {
       setNewCount((c) => c + 1);
     }
-  }, [messages, peerTyping]);
+  }, [messages, peerTyping, scrollToBottom]);
 
   function onListScroll() {
     const el = listRef.current;
@@ -566,7 +575,12 @@ export function ChatView({
                             src={m.text}
                             alt=""
                             className="img-fade block max-h-72 max-w-[300px]"
-                            onLoad={(e) => e.currentTarget.classList.add('img-loaded')}
+                            onLoad={(e) => {
+                              e.currentTarget.classList.add('img-loaded');
+                              // image height lands after layout — re-anchor
+                              // instantly so the view doesn't drift mid-open
+                              if (atBottomRef.current) scrollToBottom();
+                            }}
                           />
                         </button>
                       ) : (
@@ -606,7 +620,7 @@ export function ChatView({
                     </div>
                   ) : (
                     <div
-                      className={`bubble-shadow relative rounded-2xl border-2 px-4 py-2.5 text-sm font-medium leading-relaxed ${
+                      className={`bubble-shadow relative rounded-2xl border-2 px-4 py-2.5 text-[15px] font-medium leading-relaxed ${
                         m.mine
                           ? `border-border-strong bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'} ${lastOfGroup ? 'rounded-br-md' : 'rounded-br-md'}`
                           : `border-border-strong bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'} ${lastOfGroup ? 'rounded-bl-md' : 'rounded-bl-md'}`
@@ -644,8 +658,8 @@ export function ChatView({
                       )}
                       {(lastOfGroup || m.edited_at) && (
                         <span
-                          className={`ml-2 align-baseline font-mono text-[9px] tabular-nums ${
-                            m.mine ? 'text-bg/60' : 'text-text-faint'
+                          className={`ml-2 align-baseline font-mono text-[11px] tabular-nums ${
+                            m.mine ? 'text-bg/70' : 'text-text-dim'
                           }`}
                         >
                           {m.edited_at ? `${t('msg.edited')} · ` : ''}
@@ -656,29 +670,6 @@ export function ChatView({
                     </div>
                   )}
 
-                  {m.reactions.length > 0 && (
-                    <div className={`mt-1 flex gap-1 ${m.mine ? 'justify-end' : ''}`}>
-                      {m.reactions.map((r) => (
-                        <button
-                          key={r.emoji}
-                          type="button"
-                          onClick={() => react(m.id, r.emoji)}
-                          className={`animate-pop rounded-full border-2 px-2 py-0.5 text-[14px] transition-transform hover:scale-110 ${
-                            r.mine
-                              ? 'border-accent bg-accent-dim'
-                              : 'border-border bg-surface hover:border-border-strong'
-                          }`}
-                        >
-                          {r.emoji}
-                          {r.count > 1 && (
-                            <span className="ml-1 text-[10px] font-bold text-text-dim">
-                              {r.count}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 {/* hover actions: react · reply · ⋯ */}
@@ -769,6 +760,31 @@ export function ChatView({
                 </div>
               </div>
             </div>
+            {/* reactions live OUTSIDE the avatar-aligned row so the pfp never
+                gets pushed down by them */}
+            {m.reactions.length > 0 && (
+              <div
+                className={`mt-1 flex gap-1 ${m.mine ? 'justify-end pr-1' : 'justify-start pl-10'}`}
+              >
+                {m.reactions.map((r) => (
+                  <button
+                    key={r.emoji}
+                    type="button"
+                    onClick={() => react(m.id, r.emoji)}
+                    className={`animate-pop rounded-full border-2 px-2 py-0.5 text-[14px] transition-transform hover:scale-110 ${
+                      r.mine
+                        ? 'border-accent bg-accent-dim'
+                        : 'border-border bg-surface hover:border-border-strong'
+                    }`}
+                  >
+                    {r.emoji}
+                    {r.count > 1 && (
+                      <span className="ml-1 text-[10px] font-bold text-text-dim">{r.count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
             </div>
           );
         })}
@@ -799,7 +815,7 @@ export function ChatView({
         <button
           type="button"
           onClick={() => {
-            bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            scrollToBottom(true);
             setNewCount(0);
           }}
           className="animate-scale-in absolute bottom-24 left-1/2 z-20 -translate-x-1/2 rounded-full border-2 border-accent bg-surface px-4 py-1.5 text-xs font-extrabold text-accent shadow-xl shadow-black/50 hover:bg-accent-dim"

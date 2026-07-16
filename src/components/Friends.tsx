@@ -6,6 +6,7 @@ import { getLang, t } from '../lib/i18n';
 import { BadgeModal } from './BadgeModal';
 import {
   BoltIcon,
+  ChatIcon,
   FlameIcon,
   HeadphonesIcon,
   PointIcon,
@@ -18,6 +19,7 @@ import type { FriendEntry, PresenceRow } from '../lib/social';
 import type { SocialHook } from '../hooks/useSocial';
 import type { GroupsHook } from '../hooks/useGroups';
 import { ChatView } from './Chat';
+import { ConfirmModal } from './Confirm';
 import { CreateGroupModal, GroupView } from './Groups';
 import { Mascot } from './Mascot';
 
@@ -362,6 +364,9 @@ export function statusLineFor(
   status: social.FriendStatus,
   row: PresenceRow | undefined,
   customStatus?: string | null,
+  /** the presence owner's username — filtered OUT of the jam list ("jam with
+   *  the OTHERS", never with themselves) */
+  ownerUsername?: string,
 ): string {
   if (status === 'focusing') {
     const sec = row?.started_at
@@ -373,7 +378,10 @@ export function statusLineFor(
       try {
         const list = JSON.parse(row.jam_members) as string[];
         if (list.length >= 2) {
-          const names = list.map((u) => `@${cleanProfanity(u)}`).join(' ');
+          const others = ownerUsername
+            ? list.filter((u) => u.toLowerCase() !== ownerUsername.toLowerCase())
+            : list;
+          const names = others.map((u) => `@${cleanProfanity(u)}`).join(' ');
           return `${t('fr.injam', names)} · ${formatDurationShort(sec)}`;
         }
       } catch {
@@ -520,7 +528,7 @@ function FriendProfile({
               @{friend.username}
             </h1>
             <div className={`mt-1 text-sm font-semibold ${statusText(status)}`}>
-              {statusLineFor(status, row)}
+              {statusLineFor(status, row, null, friend.username)}
             </div>
             {friend.statusText && (
               <p className="mt-1 max-w-xs truncate text-xs font-bold italic text-text">
@@ -666,39 +674,23 @@ function FriendProfile({
           )}
         </div>
 
-        {/* unfriend — real confirmation */}
-        {!confirmRemove ? (
-          <button
-            type="button"
-            onClick={() => setConfirmRemove(true)}
-            className="chunk-btn w-full py-3 text-sm text-danger"
-          >
-            {t('fr.unfriend')}
-          </button>
-        ) : (
-          <div className="chunk space-y-3 border-danger/60 p-4">
-            <p className="text-center text-sm font-bold text-text">
-              {t('fr.unfriend.confirm', friend.username)}
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={unfriend}
-                className="chunk-btn flex-1 bg-danger py-2.5 text-sm font-extrabold text-white"
-              >
-                {busy ? '…' : t('fr.unfriend.yes')}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setConfirmRemove(false)}
-                className="chunk-btn flex-1 py-2.5 text-sm text-text"
-              >
-                {t('misc.cancel')}
-              </button>
-            </div>
-          </div>
+        {/* unfriend — full confirmation popup */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setConfirmRemove(true)}
+          className="chunk-btn w-full py-3 text-sm text-danger"
+        >
+          {t('fr.unfriend')}
+        </button>
+        {confirmRemove && (
+          <ConfirmModal
+            title={t('fr.unfriend')}
+            body={t('fr.unfriend.confirm', friend.username)}
+            confirmLabel={t('fr.unfriend.yes')}
+            onConfirm={unfriend}
+            onClose={() => setConfirmRemove(false)}
+          />
         )}
       </div>
     </div>
@@ -736,6 +728,10 @@ export function FriendsPage({
     friend: FriendEntry;
   } | null>(null);
   const [jamRequested, setJamRequested] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; friend: FriendEntry } | null>(
+    null,
+  );
+  const [confirmUnfriend, setConfirmUnfriend] = useState<FriendEntry | null>(null);
   const [groupOpen, setGroupOpen] = useState<number | null>(null); // group id
   const [creatingGroup, setCreatingGroup] = useState(false);
 
@@ -879,6 +875,14 @@ export function FriendsPage({
           setAllFriendsOpen(false);
           openChat(f);
         }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setCtxMenu({
+            x: Math.min(e.clientX, window.innerWidth - 200),
+            y: Math.min(e.clientY, window.innerHeight - 190),
+            friend: f,
+          });
+        }}
         onKeyDown={(e) => e.key === 'Enter' && openChat(f)}
         className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-2 ${
           active ? 'bg-surface-hover' : 'hover:bg-surface-hover'
@@ -889,7 +893,7 @@ export function FriendsPage({
           <div className="min-w-0">
             <div className="truncate text-sm font-bold text-text">@{f.username}</div>
             <div className={`truncate text-[11px] font-medium ${statusText(status)}`}>
-              {statusLineFor(status, row, f.statusText)}
+              {statusLineFor(status, row, f.statusText, f.username)}
             </div>
           </div>
         </div>
@@ -931,7 +935,7 @@ export function FriendsPage({
   return (
     <div className="flex h-full min-h-0">
       {/* LEFT: friends column */}
-      <aside className="scrollbar-none flex w-[330px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-border p-4">
+      <aside className="scrollbar-none flex w-[400px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-border p-4">
         <div className="flex items-start justify-between gap-2 px-1">
           <div className="min-w-0">
             <h1 className="text-base font-extrabold tracking-tight text-text">{t('fr.title')}</h1>
@@ -1248,7 +1252,7 @@ export function FriendsPage({
             <button
               type="button"
               onClick={() => setCreatingGroup(true)}
-              className="chunk-btn w-full py-2 text-[11px] text-text-dim"
+              className="chunk-btn chunk-btn-accent flex w-full items-center justify-center gap-2 py-3 text-[13px]"
             >
               + {t('grp.create.cta')}
             </button>
@@ -1315,6 +1319,81 @@ export function FriendsPage({
             </div>
           </div>
         </div>
+      )}
+
+      {/* right-click menu on a friend — Discord-style */}
+      {ctxMenu && (
+        <div className="fixed inset-0 z-[68]" onMouseDown={() => setCtxMenu(null)}>
+          <div
+            className="animate-scale-in absolute w-48 rounded-xl border-2 border-border-strong bg-surface p-1.5 shadow-2xl shadow-black/60"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="truncate px-2.5 pb-1 pt-0.5 text-[11px] font-extrabold text-text-faint">
+              @{ctxMenu.friend.username}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setChatting(null);
+                onChatOpened(null);
+                setViewing(ctxMenu.friend.userId);
+                setCtxMenu(null);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-text hover:bg-surface-hover"
+            >
+              <ProfileIcon size={15} /> {t('menu.profile')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                openChat(ctxMenu.friend);
+                setCtxMenu(null);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-text hover:bg-surface-hover"
+            >
+              <ChatIcon size={15} /> {t('msg.open')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                social.sendPoke(ctxMenu.friend.userId, 'poke').then((err) => {
+                  if (err === 'rate') onError(t('poke.rate'));
+                });
+                setCtxMenu(null);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-text hover:bg-surface-hover"
+            >
+              <PointIcon size={15} /> {t('poke.cta')}
+            </button>
+            <div className="mx-1 my-1 border-t border-border" />
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmUnfriend(ctxMenu.friend);
+                setCtxMenu(null);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-danger hover:bg-danger/10"
+            >
+              ✕ {t('fr.unfriend')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmUnfriend && (
+        <ConfirmModal
+          title={t('fr.unfriend')}
+          body={t('fr.unfriend.confirm', confirmUnfriend.username)}
+          confirmLabel={t('fr.unfriend.yes')}
+          onConfirm={() => {
+            social.removeFriendship(confirmUnfriend.friendshipId).then((err) => {
+              if (err) onError(err);
+              soc.refresh();
+            });
+          }}
+          onClose={() => setConfirmUnfriend(null)}
+        />
       )}
 
       {/* active jam detail — see who's inside + ask to join */}
@@ -1393,7 +1472,7 @@ export function FriendsPage({
               <ChatView
                 friend={chattingFriend}
                 myUserId={me.user_id}
-                statusLine={statusLineFor(chatStatus, presRow)}
+                statusLine={statusLineFor(chatStatus, presRow, chattingFriend.statusText, chattingFriend.username)}
                 statusColor={statusText(chatStatus)}
                 friendLive={live}
                 friendFocusSec={focusSec}

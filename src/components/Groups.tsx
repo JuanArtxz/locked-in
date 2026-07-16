@@ -7,6 +7,7 @@ import { formatDurationShort } from '../lib/time';
 import type { FriendEntry } from '../lib/social';
 import { DotsIcon, HeadphonesIcon, SendIcon, TargetIcon } from './Icons';
 import { DaySeparator } from './Chat';
+import { ConfirmModal } from './Confirm';
 
 function timeLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
@@ -181,6 +182,13 @@ export function GroupView({
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalDraft, setGoalDraft] = useState(group.week_goal_hours ?? 10);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmKick, setConfirmKick] = useState<{ userId: string; username: string } | null>(
+    null,
+  );
+  const [confirmDemote, setConfirmDemote] = useState<{
+    userId: string;
+    username: string;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const reload = useCallback(() => {
@@ -257,6 +265,11 @@ export function GroupView({
 
   async function promote(userId: string) {
     const err = await groups.promoteMember(group.id, userId);
+    if (err) onError(err);
+  }
+
+  async function demote(userId: string) {
+    const err = await groups.demoteMember(group.id, userId);
     if (err) onError(err);
   }
 
@@ -395,43 +408,7 @@ export function GroupView({
           publishes to groupmates; no new data is exposed */}
       {(group.week_goal_hours || meAdmin) && (
         <div className="shrink-0 border-b border-border px-4 py-2">
-          {editingGoal ? (
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-[11px] font-bold text-text-dim"><TargetIcon size={11} /> {t('grp.goal.label')}</span>
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={goalDraft}
-                onChange={(e) => setGoalDraft(Number(e.target.value))}
-                className="chunk-input w-20 px-2 py-1 text-center text-xs font-bold text-text"
-              />
-              <span className="text-[11px] text-text-faint">h</span>
-              <button
-                type="button"
-                onClick={() => saveWeekGoal(Math.max(1, Math.min(500, goalDraft)))}
-                className="chunk-btn chunk-btn-accent px-2.5 py-1 text-[11px]"
-              >
-                {t('misc.save')}
-              </button>
-              {group.week_goal_hours && (
-                <button
-                  type="button"
-                  onClick={() => saveWeekGoal(null)}
-                  className="px-1 text-[11px] font-bold text-danger hover:underline"
-                >
-                  {t('grp.goal.remove')}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setEditingGoal(false)}
-                className="px-1 text-[11px] font-bold text-text-faint hover:text-text"
-              >
-                {t('misc.cancel')}
-              </button>
-            </div>
-          ) : group.week_goal_hours ? (
+          {group.week_goal_hours ? (
             (() => {
               const doneSec = members.reduce((acc, m) => acc + weekSecOf(m.user_id), 0);
               const goalSec = group.week_goal_hours * 3600;
@@ -526,7 +503,7 @@ export function GroupView({
                     </div>
                   )}
                   <div
-                    className={`bubble-shadow rounded-2xl border-2 border-border-strong px-4 py-2.5 text-sm font-medium leading-relaxed ${
+                    className={`bubble-shadow rounded-2xl border-2 border-border-strong px-4 py-2.5 text-[15px] font-medium leading-relaxed ${
                       m.mine
                         ? `rounded-br-md bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'}`
                         : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
@@ -534,7 +511,7 @@ export function GroupView({
                   >
                     {m.body}
                     <span
-                      className={`ml-2 align-baseline font-mono text-[9px] tabular-nums ${
+                      className={`ml-2 align-baseline font-mono text-[11px] tabular-nums ${
                         m.mine ? 'text-bg/60' : 'text-text-faint'
                       }`}
                     >
@@ -697,42 +674,10 @@ export function GroupView({
               </button>
             </div>
 
-            <div className="scrollbar-none min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-              <div className="flex items-center justify-between px-1 py-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wide text-text-dim">
-                  {t('grp.members', String(members.length))}
-                </span>
-                {meAdmin && canAddMore && addable.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAdd((s) => !s)}
-                    className="text-[11px] font-bold text-accent hover:underline"
-                  >
-                    + {t('grp.add')}
-                  </button>
-                )}
+            <div className="scrollbar-none min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
+              <div className="px-1 py-1 text-[10px] font-extrabold uppercase tracking-wide text-text-dim">
+                {t('grp.members', String(members.length))}
               </div>
-
-              {showAdd && (
-                <div className="mb-1 space-y-0.5 rounded-xl border-2 border-border-strong bg-bg p-1.5">
-                  {addable.length === 0 && (
-                    <div className="py-2 text-center text-[11px] text-text-faint">
-                      {t('grp.noone')}
-                    </div>
-                  )}
-                  {addable.map((f) => (
-                    <button
-                      key={f.userId}
-                      type="button"
-                      onClick={() => add(f.userId)}
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface-hover"
-                    >
-                      <MiniAvatar name={f.username} photo={f.avatar} />
-                      <span className="truncate text-xs font-bold text-text">@{f.username}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
 
               {members.map((m) => {
                 const isOwner = m.user_id === group.owner;
@@ -740,81 +685,219 @@ export function GroupView({
                 return (
                   <div
                     key={m.user_id}
-                    className="group flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-surface-hover"
+                    className="rounded-xl border border-border bg-bg/40 px-3 py-2.5"
                   >
-                    <MiniAvatar name={m.username} photo={m.avatar} live={isLive(m.user_id)} />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-bold text-text">
-                        {m.user_id === myUserId ? t('fr.me') : `@${m.username}`}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-[10px] font-bold">
-                        {isOwner ? (
-                          <span className="text-accent">{t('grp.owner')}</span>
-                        ) : m.is_admin ? (
-                          <span className="text-sky-400">{t('grp.admin')}</span>
-                        ) : (
-                          <span className="text-text-faint">{t('grp.member')}</span>
-                        )}
-                        {m.in_jam && <span className="text-accent">· 🎧</span>}
+                    <div className="flex items-center gap-2.5">
+                      <MiniAvatar name={m.username} photo={m.avatar} live={isLive(m.user_id)} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-bold text-text">
+                          {m.user_id === myUserId ? t('fr.me') : `@${m.username}`}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                          {isOwner ? (
+                            <span className="text-accent">{t('grp.owner')}</span>
+                          ) : m.is_admin ? (
+                            <span className="text-sky-400">{t('grp.admin')}</span>
+                          ) : (
+                            <span className="text-text-faint">{t('grp.member')}</span>
+                          )}
+                          {m.in_jam && (
+                            <HeadphonesIcon size={10} className="text-accent" />
+                          )}
+                        </div>
                       </div>
                     </div>
                     {canManage && (
-                      <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        {!m.is_admin && (
+                      <div className="mt-2 flex gap-1.5">
+                        {m.is_admin ? (
                           <button
                             type="button"
-                            title={t('grp.promote')}
-                            onClick={() => promote(m.user_id)}
-                            className="rounded-md px-1.5 py-0.5 text-[10px] font-bold text-sky-400 hover:bg-bg"
+                            onClick={() =>
+                              setConfirmDemote({ userId: m.user_id, username: m.username })
+                            }
+                            className="chunk-btn flex-1 py-1.5 text-[11px] font-bold text-sky-400"
                           >
-                            ↑adm
+                            {t('grp.demote')}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => promote(m.user_id)}
+                            className="chunk-btn flex-1 py-1.5 text-[11px] font-bold text-sky-400"
+                          >
+                            {t('grp.promote')}
                           </button>
                         )}
                         <button
                           type="button"
-                          title={t('grp.kick')}
-                          onClick={() => kick(m.user_id)}
-                          className="rounded-md px-1.5 py-0.5 text-[10px] font-bold text-danger hover:bg-bg"
+                          onClick={() =>
+                            setConfirmKick({ userId: m.user_id, username: m.username })
+                          }
+                          className="chunk-btn flex-1 py-1.5 text-[11px] font-bold text-danger"
                         >
-                          ✕
+                          {t('grp.kick')}
                         </button>
                       </div>
                     )}
                   </div>
                 );
               })}
-            </div>
 
-            <div className="border-t border-border p-2">
-              {!confirmLeave ? (
+              {meAdmin && canAddMore && (
                 <button
                   type="button"
-                  onClick={() => setConfirmLeave(true)}
-                  className="chunk-btn w-full py-2 text-xs text-danger"
+                  onClick={() => setShowAdd(true)}
+                  className="chunk-btn chunk-btn-accent w-full py-2.5 text-[13px]"
                 >
-                  {group.owner === myUserId ? t('grp.delete') : t('grp.leave')}
+                  + {t('grp.add')}
                 </button>
-              ) : (
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={leave}
-                    className="chunk-btn flex-1 bg-danger py-2 text-xs font-extrabold text-white"
-                  >
-                    {t('fr.unfriend.yes')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmLeave(false)}
-                    className="chunk-btn flex-1 py-2 text-xs text-text"
-                  >
-                    {t('misc.cancel')}
-                  </button>
-                </div>
               )}
+            </div>
+
+            <div className="border-t border-border p-3">
+              <button
+                type="button"
+                onClick={() => setConfirmLeave(true)}
+                className="chunk-btn w-full py-2.5 text-[13px] font-bold text-danger"
+              >
+                {group.owner === myUserId ? t('grp.delete') : t('grp.leave')}
+              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* add-member modal — real popup, big rows */}
+      {showAdd && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          onMouseDown={(e) => e.target === e.currentTarget && setShowAdd(false)}
+        >
+          <div className="chunk animate-scale-in flex max-h-[70vh] w-full max-w-sm flex-col p-5">
+            <h2 className="text-lg font-extrabold text-text">{t('grp.add')}</h2>
+            <p className="mt-0.5 text-xs font-medium text-text-faint">
+              {t('grp.pick')} ({members.length}/{groups.GROUP_MAX})
+            </p>
+            <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {addable.length === 0 && (
+                <div className="py-6 text-center text-sm font-semibold text-text-faint">
+                  {t('grp.noone')}
+                </div>
+              )}
+              {addable.map((f) => (
+                <button
+                  key={f.userId}
+                  type="button"
+                  onClick={() => add(f.userId)}
+                  className="flex w-full items-center gap-3 rounded-xl border-2 border-border px-3 py-2.5 text-left hover:border-accent hover:bg-accent-dim"
+                >
+                  <MiniAvatar name={f.username} photo={f.avatar} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-text">
+                    @{f.username}
+                  </span>
+                  <span className="text-lg font-extrabold text-accent">+</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdd(false)}
+              className="mt-3 text-xs font-bold text-text-faint hover:text-text"
+            >
+              {t('misc.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* weekly goal modal — its own proper popup */}
+      {editingGoal && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          onMouseDown={(e) => e.target === e.currentTarget && setEditingGoal(false)}
+        >
+          <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-dim">
+              <TargetIcon size={26} className="text-accent" />
+            </div>
+            <h2 className="mt-3 text-lg font-extrabold text-text">{t('grp.goal.label')}</h2>
+            <p className="mt-1 text-xs font-medium text-text-dim">{t('grp.goal.modal.body')}</p>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setGoalDraft(Math.max(1, goalDraft - 5))}
+                className="chunk-btn h-11 w-11 text-lg text-text"
+              >
+                −
+              </button>
+              <span className="min-w-24 font-mono text-2xl font-bold tabular-nums text-text">
+                {goalDraft}h
+              </span>
+              <button
+                type="button"
+                onClick={() => setGoalDraft(Math.min(500, goalDraft + 5))}
+                className="chunk-btn h-11 w-11 text-lg text-text"
+              >
+                +
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => saveWeekGoal(Math.max(1, Math.min(500, goalDraft)))}
+              className="chunk-btn chunk-btn-accent mt-5 w-full py-3 text-sm"
+            >
+              {t('misc.save')}
+            </button>
+            {group.week_goal_hours && (
+              <button
+                type="button"
+                onClick={() => saveWeekGoal(null)}
+                className="mt-2 w-full py-1.5 text-xs font-bold text-danger hover:underline"
+              >
+                {t('grp.goal.remove')}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditingGoal(false)}
+              className="mt-1 text-xs font-bold text-text-faint hover:text-text"
+            >
+              {t('misc.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmKick && (
+        <ConfirmModal
+          title={t('grp.kick.title')}
+          body={t('grp.kick.body', confirmKick.username, group.name)}
+          confirmLabel={t('grp.kick')}
+          onConfirm={() => kick(confirmKick.userId)}
+          onClose={() => setConfirmKick(null)}
+        />
+      )}
+      {confirmDemote && (
+        <ConfirmModal
+          title={t('grp.demote.title')}
+          body={t('grp.demote.body', confirmDemote.username)}
+          confirmLabel={t('grp.demote')}
+          onConfirm={() => demote(confirmDemote.userId)}
+          onClose={() => setConfirmDemote(null)}
+        />
+      )}
+      {confirmLeave && (
+        <ConfirmModal
+          title={group.owner === myUserId ? t('grp.delete.title') : t('grp.leave.title')}
+          body={
+            group.owner === myUserId
+              ? t('grp.delete.body', group.name)
+              : t('grp.leave.body', group.name)
+          }
+          confirmLabel={group.owner === myUserId ? t('grp.delete') : t('grp.leave')}
+          onConfirm={leave}
+          onClose={() => setConfirmLeave(false)}
+        />
       )}
     </div>
   );
