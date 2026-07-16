@@ -32,6 +32,20 @@ export interface JamMeta {
   startedAt: string;
   /** usernames of everyone in the jam, me included */
   members: string[];
+  /** synced pomodoro rhythm "work/break" in minutes (e.g. "25/5"), null = free.
+   *  Purely visual/advisory — it NEVER pauses anyone's session. */
+  pomo?: string | null;
+}
+
+/** "25/5" → seconds, null for anything malformed */
+export function parsePomo(pomo: string | null | undefined): { workSec: number; breakSec: number } | null {
+  if (!pomo) return null;
+  const m = /^(\d{1,3})\/(\d{1,2})$/.exec(pomo);
+  if (!m) return null;
+  const work = Number(m[1]);
+  const brk = Number(m[2]);
+  if (work < 5 || brk < 1) return null;
+  return { workSec: work * 60, breakSec: brk * 60 };
 }
 
 export interface UseFocusSession {
@@ -54,7 +68,7 @@ export interface UseFocusSession {
   resolveAfk: (discount: boolean) => void;
   startSession: (task: string, project: string | null, jam?: JamMeta) => Promise<void>;
   /** upgrade the running session to a jam (host side) — merges member lists */
-  markJam: (members: string[]) => void;
+  markJam: (members: string[], pomo?: string | null) => void;
   /** REPLACE the jam member list (group jams sync it from the server) */
   syncJamMembers: (members: string[]) => void;
   pauseSession: () => void;
@@ -371,13 +385,17 @@ export function useFocusSession(opts: FocusOptions): UseFocusSession {
   );
 
   const markJam = useCallback(
-    (members: string[]) => {
+    (members: string[], pomo?: string | null) => {
       if (!activeSession) return;
       const current = jam;
       const merged = dedupeUsers([...(current?.members ?? []), ...members]);
       db.setSessionJamMembers(activeSession.id, merged).catch((err) => setError(String(err)));
       // host keeps their own clock — the jam started when THEIR session did
-      setJam({ startedAt: current?.startedAt ?? activeSession.started_at, members: merged });
+      setJam({
+        startedAt: current?.startedAt ?? activeSession.started_at,
+        members: merged,
+        pomo: pomo !== undefined ? pomo : (current?.pomo ?? null),
+      });
       // keep the in-memory row in sync: a midnight split copies jam_members
       // from this object, not from the database
       setActiveSession({ ...activeSession, jam_members: JSON.stringify(merged) });
@@ -400,7 +418,7 @@ export function useFocusSession(opts: FocusOptions): UseFocusSession {
         return;
       }
       db.setSessionJamMembers(activeSession.id, next).catch((err) => setError(String(err)));
-      setJam({ startedAt: jam.startedAt, members: next });
+      setJam({ startedAt: jam.startedAt, members: next, pomo: jam.pomo ?? null });
       setActiveSession({ ...activeSession, jam_members: JSON.stringify(next) });
     },
     [activeSession, jam],

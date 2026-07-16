@@ -19,6 +19,11 @@ const ACCENT_PRESETS = [
   { color: '#4da6ff', nameKey: 'set.accent.blue' },
   { color: '#a78bfa', nameKey: 'set.accent.purple' },
   { color: '#ff6bb5', nameKey: 'set.accent.pink' },
+  { color: '#7dd3fc', nameKey: 'set.accent.ice' },
+  { color: '#f87171', nameKey: 'set.accent.red' },
+  { color: '#fbbf24', nameKey: 'set.accent.amber' },
+  { color: '#34d399', nameKey: 'set.accent.mint' },
+  { color: '#e8e8ec', nameKey: 'set.accent.white' },
 ];
 
 export function SettingsScreen({ settingsHook, onError }: SettingsProps) {

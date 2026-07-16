@@ -21,7 +21,8 @@ import { ProfilePage } from './components/Profile';
 import { SettingsScreen } from './components/Settings';
 import { Titlebar } from './components/Titlebar';
 import { Week } from './components/Week';
-import { useFocusSession } from './hooks/useFocusSession';
+import { cleanProfanity } from './lib/filter';
+import { parsePomo, useFocusSession } from './hooks/useFocusSession';
 import { useSettings } from './hooks/useSettings';
 import { useSocial } from './hooks/useSocial';
 import { useGroups } from './hooks/useGroups';
@@ -278,12 +279,14 @@ function AppShell() {
     phase: focus.phase,
     task: focus.activeSession?.task ?? null,
     elapsedSec: focus.elapsedSec,
+    afkSec: focus.pendingAfkSec ?? 0,
     jamMembers: focus.jam?.members ?? null,
   });
   heartbeatRef.current = {
     phase: focus.phase,
     task: focus.activeSession?.task ?? null,
     elapsedSec: focus.elapsedSec,
+    afkSec: focus.pendingAfkSec ?? 0,
     jamMembers: focus.jam?.members ?? null,
   };
   useEffect(() => {
@@ -291,8 +294,11 @@ function AppShell() {
     let cancelled = false;
     let appVersion = '';
     const beat = async () => {
-      const { phase, task, elapsedSec, jamMembers } = heartbeatRef.current;
+      const { phase, task, elapsedSec, afkSec, jamMembers } = heartbeatRef.current;
       const focusing = phase === 'focusing';
+      // fairness: AFK time never counts toward the published leaderboard
+      const liveSec =
+        focusing || phase === 'paused' ? Math.max(0, elapsedSec - afkSec) : 0;
       try {
         if (!appVersion) appVersion = await getVersion().catch(() => '0.0.0');
         const saved = await db.getFocusSecondsSince(socialLib.weekStart().toISOString());
@@ -311,10 +317,10 @@ function AppShell() {
           focusing,
           task: focusing ? task : null,
           startedAt: focusing ? new Date(Date.now() - elapsedSec * 1000).toISOString() : null,
-          weekSec: saved + (focusing || phase === 'paused' ? elapsedSec : 0),
+          weekSec: saved + liveSec,
           appVersion,
           publicProjects,
-          totalSec: life.totalSec + (focusing || phase === 'paused' ? elapsedSec : 0),
+          totalSec: life.totalSec + liveSec,
           // a jam is 2+ people — solo focusing (or a group jam nobody joined
           // yet) must not read as "in a jam" to friends
           jamMembers: focusing && jamMembers && jamMembers.length >= 2 ? jamMembers : null,
@@ -666,7 +672,7 @@ function AppShell() {
       // dedicated jam popup — answerable straight from the corner
       invoke('show_jam_call', {
         username: p.username,
-        task: p.task,
+        task: cleanProfanity(p.task),
         incomingKind: p.kind,
       }).catch(() => {});
     },
@@ -885,15 +891,164 @@ function AppShell() {
     }
   }, [focus.jam, social.presence, pushToast]);
 
+  // ---- synced pomodoro: purely advisory — announces work/break flips derived
+  // from the SHARED jam clock; never pauses anyone's session ----
+  const pomoPrevRef = useRef<'work' | 'break' | null>(null);
+  useEffect(() => {
+    const p = parsePomo(focus.jam?.pomo);
+    if (!focus.jam || !p || focus.phase !== 'focusing') {
+      pomoPrevRef.current = null;
+      return;
+    }
+    const cycle = p.workSec + p.breakSec;
+    const pos = ((focus.displayElapsedSec % cycle) + cycle) % cycle;
+    const phase: 'work' | 'break' = pos < p.workSec ? 'work' : 'break';
+    const prev = pomoPrevRef.current;
+    pomoPrevRef.current = phase;
+    if (prev && prev !== phase) {
+      const msg =
+        phase === 'break'
+          ? t('pomo.jam.break', String(Math.round(p.breakSec / 60)))
+          : t('pomo.jam.work');
+      pushToast(msg, 'info');
+      invoke('show_notice', {
+        title: '🍅 Pomodoro',
+        body: msg,
+        mood: phase === 'break' ? 'relax' : 'focus',
+      }).catch(() => {});
+    }
+  }, [focus.displayElapsedSec, focus.jam, focus.phase, pushToast]);
+
+  // ---- pokes: 👉 nudges + 🔥 cheers from friends (server rate-limited) ----
+  useEffect(() => {
+    if (!signedIn) return;
+    const seenKey = 'pokes-seen';
+    const markSeen = () => localStorage.setItem(seenKey, new Date().toISOString());
+    const showPoke = (row: socialLib.PokeRow) => {
+      if (localStorage.getItem('pokes-blocked') === '1') return;
+      const who = jamLookup(row.from_user);
+      const cheer = row.kind === 'cheer';
+      pushToast(
+        cheer ? t('poke.cheer.toast', who.username) : t('poke.toast', who.username),
+        'info',
+      );
+      invoke('show_notice', {
+        title: (cheer ? '🔥 @' : '👉 @') + who.username,
+        body: cheer ? t('poke.cheer.body') : t('poke.body'),
+        mood: 'hyped',
+        avatar: who.avatar,
+      }).catch(() => {});
+    };
+    // catch up on pokes that landed while the app was closed (24h window),
+    // showing at most the 3 newest — after friends state had time to load
+    const since =
+      localStorage.getItem(seenKey) ?? new Date(Date.now() - 86_400_000).toISOString();
+    const boot = window.setTimeout(() => {
+      socialLib
+        .fetchPokesSince(since)
+        .then((rows) => {
+          rows.slice(-3).forEach(showPoke);
+          if (rows.length > 0) markSeen();
+        })
+        .catch(() => {});
+    }, 4000);
+    const unsub = socialLib.subscribePokes((row) => {
+      if (row.to_user !== socialStateRef.current?.me?.user_id) return;
+      showPoke(row);
+      markSeen();
+    });
+    return () => {
+      window.clearTimeout(boot);
+      unsub();
+    };
+  }, [signedIn, jamLookup, pushToast]);
+
+  // ---- activity feed: self-report wins AFTER each saved session. Golden
+  // rule: nothing private — records/streak/jams only, and only user-visible
+  // magnitudes. First run just baselines old records so history isn't spammed.
+  useEffect(() => {
+    if (!signedIn) return;
+    if (localStorage.getItem('feed-share-off') === '1') return;
+    (async () => {
+      try {
+        const marks = JSON.parse(localStorage.getItem('feed-marks') ?? '{}') as {
+          bestSession?: number;
+          bestDay?: number;
+          streakTier?: number;
+          lastJamSessionId?: number;
+        };
+        const next = { ...marks };
+        const rec = await db.getRecords();
+        if (marks.bestSession === undefined) {
+          next.bestSession = rec.bestSessionSec;
+        } else if (rec.bestSessionSec > marks.bestSession) {
+          next.bestSession = rec.bestSessionSec;
+          if (rec.bestSessionSec >= 1800)
+            socialLib.postFeedEvent('record_session', { sec: rec.bestSessionSec }).catch(() => {});
+        }
+        if (marks.bestDay === undefined) {
+          next.bestDay = rec.bestDaySec;
+        } else if (rec.bestDaySec > marks.bestDay) {
+          next.bestDay = rec.bestDaySec;
+          if (rec.bestDaySec >= 3600)
+            socialLib.postFeedEvent('record_day', { sec: rec.bestDaySec }).catch(() => {});
+        }
+        // streak tier (days hitting the daily goal, counted like milestones)
+        const goalSec = (settingsRef.current?.daily_goal_hours ?? 4) * 3600;
+        const byDay = new Map(
+          (
+            await db.getDailyTotals(new Date(Date.now() - 400 * 86_400_000).toISOString())
+          ).map((d) => [d.date, d.total_sec]),
+        );
+        const dayKey = (dt: Date) =>
+          `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const cur = new Date();
+        if ((byDay.get(dayKey(cur)) ?? 0) < goalSec) cur.setDate(cur.getDate() - 1);
+        let streak = 0;
+        while ((byDay.get(dayKey(cur)) ?? 0) >= goalSec) {
+          streak++;
+          cur.setDate(cur.getDate() - 1);
+        }
+        const tier = [100, 50, 30, 14, 7, 3].find((n) => streak >= n) ?? 0;
+        if (marks.streakTier === undefined || tier < marks.streakTier) {
+          next.streakTier = tier; // baseline / streak broke — rearm quietly
+        } else if (tier > marks.streakTier) {
+          next.streakTier = tier;
+          socialLib.postFeedEvent('streak', { n: tier }).catch(() => {});
+        }
+        // finished jam sessions (2+ people, ≥5min)
+        const last = (await db.listSessions({ limit: 1 }))[0];
+        if (last?.ended_at && last.id !== marks.lastJamSessionId) {
+          if (last.jam_members) {
+            try {
+              const members = JSON.parse(last.jam_members) as string[];
+              if (members.length >= 2 && (last.duration_sec ?? 0) >= 300) {
+                socialLib
+                  .postFeedEvent('jam', { sec: last.duration_sec ?? 0, n: members.length })
+                  .catch(() => {});
+              }
+            } catch {
+              // bad json — skip
+            }
+          }
+          next.lastJamSessionId = last.id;
+        }
+        localStorage.setItem('feed-marks', JSON.stringify(next));
+      } catch {
+        // offline / db busy — the next saved session retries
+      }
+    })();
+  }, [refreshKey, signedIn]);
+
   // ---- group jam: shares the focus session + the shared display timer ----
   const startGroupJam = useCallback(
-    (groupId: number, task: string) => {
+    (groupId: number, task: string, pomo: string | null = null) => {
       const me = myUsernameRef.current ?? 'me';
       if (focusRef.current.phase !== 'idle') {
         // already focusing → convert my running session into the group jam so
         // Focus/overlay reflect it and syncJamMembers (which needs a jam) fills
         // in the roster from the server
-        focusRef.current.markJam([me]);
+        focusRef.current.markJam([me], pomo);
         setActiveGroupJamId(groupId);
         pushToast(t('grp.jam.started'), 'info');
         return;
@@ -901,6 +1056,7 @@ function AppShell() {
       focusRef.current.startSession(task, null, {
         startedAt: new Date().toISOString(),
         members: [me],
+        pomo,
       });
       setActiveGroupJamId(groupId);
       setTab('home');
@@ -909,7 +1065,7 @@ function AppShell() {
   );
 
   const joinGroupJam = useCallback(
-    (groupId: number, task: string, startedAtIso: string) => {
+    (groupId: number, task: string, startedAtIso: string, pomo: string | null = null) => {
       const me = myUsernameRef.current ?? 'me';
       if (focusRef.current.phase !== 'idle') {
         onError(t('jam.busy'));
@@ -920,6 +1076,7 @@ function AppShell() {
       focusRef.current.startSession(task, null, {
         startedAt: startedAtIso, // shared timer counts from the group's start
         members: [me],
+        pomo,
       });
       setActiveGroupJamId(groupId);
       setTab('home');

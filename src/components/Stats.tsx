@@ -25,7 +25,7 @@ interface StatsProps {
   refreshKey: number;
 }
 
-const HEATMAP_WEEKS = 26;
+const HEATMAP_WEEKS = 53; // full GitHub-style year
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function isoDateNDaysAgo(n: number): string {

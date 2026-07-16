@@ -15,6 +15,10 @@ export interface GroupRow {
   owner: string;
   jam_task: string | null;
   jam_started_at: string | null;
+  /** synced pomodoro rhythm for the running jam, e.g. "25/5" (null = free) */
+  jam_pomo: string | null;
+  /** collective weekly goal in hours (null = off) */
+  week_goal_hours: number | null;
   created_at: string;
 }
 
@@ -179,17 +183,34 @@ export async function deleteGroup(groupId: number): Promise<void> {
 // ---------- group jam (server-authoritative) ----------
 
 /** Starts the group jam and joins me to it. */
-export async function startGroupJam(groupId: number, task: string): Promise<string | null> {
+export async function startGroupJam(
+  groupId: number,
+  task: string,
+  pomo: string | null = null,
+): Promise<string | null> {
   const user = await currentUser();
   if (!user) return 'not signed in';
   const startedAt = new Date().toISOString();
   const { error } = await supabase
     .from('groups')
-    .update({ jam_task: cleanProfanity(task).slice(0, 120), jam_started_at: startedAt })
+    .update({
+      jam_task: cleanProfanity(task).slice(0, 120),
+      jam_started_at: startedAt,
+      jam_pomo: pomo,
+    })
     .eq('id', groupId);
   if (error) return error.message;
   await setJamMembership(groupId, true);
   return null;
+}
+
+/** Admin sets (or clears) the group's collective weekly goal in hours. */
+export async function setWeekGoal(groupId: number, hours: number | null): Promise<string | null> {
+  const { error } = await supabase
+    .from('groups')
+    .update({ week_goal_hours: hours })
+    .eq('id', groupId);
+  return error ? error.message : null;
 }
 
 export async function setJamMembership(groupId: number, inJam: boolean): Promise<void> {
@@ -212,7 +233,7 @@ export async function maybeEndGroupJam(groupId: number): Promise<void> {
   if ((data ?? []).length === 0) {
     await supabase
       .from('groups')
-      .update({ jam_task: null, jam_started_at: null })
+      .update({ jam_task: null, jam_started_at: null, jam_pomo: null })
       .eq('id', groupId);
   }
 }

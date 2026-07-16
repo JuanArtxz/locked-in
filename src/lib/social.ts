@@ -15,6 +15,7 @@ export interface Profile {
   avatar_b64?: string | null;
   e2e_pub?: string | null;
   bio?: string | null;
+  status_text?: string | null;
 }
 
 export interface FriendEntry {
@@ -25,6 +26,7 @@ export interface FriendEntry {
   /** current message public key — null means their app predates messaging */
   e2ePub: string | null;
   bio: string | null;
+  statusText: string | null;
 }
 
 export interface FriendsState {
@@ -79,10 +81,21 @@ export async function getMyProfile(): Promise<Profile | null> {
   if (!user) return null;
   const { data } = await supabase
     .from('profiles')
-    .select('user_id, username, avatar_b64, e2e_pub, bio')
+    .select('user_id, username, avatar_b64, e2e_pub, bio, status_text')
     .eq('user_id', user.id)
     .maybeSingle();
   return (data as Profile | null) ?? null;
+}
+
+/** Saves the custom status line (already profanity-cleaned by the caller). */
+export async function updateStatusText(text: string): Promise<string | null> {
+  const user = await currentUser();
+  if (!user) return 'not signed in';
+  const { error } = await supabase
+    .from('profiles')
+    .update({ status_text: text.trim().slice(0, 80) || null })
+    .eq('user_id', user.id);
+  return error ? error.message : null;
 }
 
 /** Saves the profile bio (already profanity-cleaned by the caller). */
@@ -157,7 +170,7 @@ export async function loadFriendsState(): Promise<FriendsState> {
   if (otherIds.length > 0) {
     const { data: profs } = await supabase
       .from('profiles')
-      .select('user_id, username, avatar_b64, e2e_pub, bio')
+      .select('user_id, username, avatar_b64, e2e_pub, bio, status_text')
       .in('user_id', otherIds);
     for (const p of (profs ?? []) as ProfileWithKey[]) profiles.set(p.user_id, p);
   }
@@ -172,6 +185,7 @@ export async function loadFriendsState(): Promise<FriendsState> {
       avatar: p?.avatar_b64 ?? null,
       e2ePub: p?.e2e_pub ?? null,
       bio: p?.bio ?? null,
+      statusText: p?.status_text ?? null,
     };
   };
 
@@ -462,4 +476,86 @@ export function subscribeJamInvites(onChange: () => void): () => void {
   return () => {
     supabase.removeChannel(channel).catch(() => {});
   };
+}
+
+// ---------- pokes: nudge a friend / cheer someone focusing ----------
+
+export type PokeKind = 'poke' | 'cheer';
+
+export interface PokeRow {
+  id: number;
+  from_user: string;
+  to_user: string;
+  kind: PokeKind;
+  created_at: string;
+}
+
+/** Server enforces friends-only + rate limit (poke 1/h, cheer 1/10min). */
+export async function sendPoke(toUserId: string, kind: PokeKind): Promise<string | null> {
+  const user = await currentUser();
+  if (!user) return 'not signed in';
+  const { error } = await supabase
+    .from('pokes')
+    .insert({ from_user: user.id, to_user: toUserId, kind });
+  if (!error) return null;
+  return /rate limited/i.test(error.message) ? 'rate' : error.message;
+}
+
+/** Pokes addressed to me newer than the given instant (missed-while-closed). */
+export async function fetchPokesSince(sinceIso: string): Promise<PokeRow[]> {
+  const user = await currentUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from('pokes')
+    .select('*')
+    .eq('to_user', user.id)
+    .gt('created_at', sinceIso)
+    .order('created_at', { ascending: true })
+    .limit(20);
+  return (data ?? []) as PokeRow[];
+}
+
+export function subscribePokes(onRow: (row: PokeRow) => void): () => void {
+  const channel = supabase
+    .channel('pokes-watch')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pokes' }, (payload) => {
+      if (payload.new) onRow(payload.new as PokeRow);
+    })
+    .subscribe();
+  return () => {
+    supabase.removeChannel(channel).catch(() => {});
+  };
+}
+
+// ---------- activity feed (friends-visible, self-reported wins) ----------
+
+export type FeedKind = 'streak' | 'record_session' | 'record_day' | 'jam';
+
+export interface FeedEvent {
+  id: number;
+  user_id: string;
+  kind: FeedKind;
+  payload: { n?: number; sec?: number };
+  created_at: string;
+}
+
+export async function postFeedEvent(
+  kind: FeedKind,
+  payload: { n?: number; sec?: number },
+): Promise<void> {
+  const user = await currentUser();
+  if (!user) return;
+  await supabase.from('feed_events').insert({ user_id: user.id, kind, payload });
+}
+
+/** Friends'' (and my) events from the last 7 days, newest first. */
+export async function fetchFeed(): Promise<FeedEvent[]> {
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data } = await supabase
+    .from('feed_events')
+    .select('*')
+    .gt('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return (data ?? []) as FeedEvent[];
 }

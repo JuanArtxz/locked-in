@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { unlockedBadges } from '../lib/badges';
 import type { Badge } from '../lib/badges';
+import { cleanProfanity } from '../lib/filter';
 import { getLang, t } from '../lib/i18n';
 import { BadgeModal } from './BadgeModal';
 import { HeadphonesIcon, ProfileIcon } from './Icons';
@@ -36,8 +37,8 @@ interface FriendsProps {
   groups: GroupsHook;
   /** the group id whose jam I'm currently focusing in, if any */
   activeGroupJamId: number | null;
-  onStartGroupJam: (groupId: number, task: string) => void;
-  onJoinGroupJam: (groupId: number, task: string, startedAtIso: string) => void;
+  onStartGroupJam: (groupId: number, task: string, pomo: string | null) => void;
+  onJoinGroupJam: (groupId: number, task: string, startedAtIso: string, pomo: string | null) => void;
   onLeaveGroupJam: () => void;
 }
 
@@ -128,7 +129,116 @@ function JamGateToggle() {
   );
 }
 
-export function statusLineFor(status: social.FriendStatus, row: PresenceRow | undefined): string {
+/** Same pattern for pokes: blocked → incoming pokes/cheers are shown to no one */
+function PokeGateToggle() {
+  const [blocked, setBlocked] = useState(() => localStorage.getItem('pokes-blocked') === '1');
+  function toggle() {
+    const next = !blocked;
+    localStorage.setItem('pokes-blocked', next ? '1' : '0');
+    setBlocked(next);
+  }
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={t('poke.gate.tip')}
+      className={`flex shrink-0 items-center gap-1 rounded-full border-2 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide transition-colors ${
+        blocked
+          ? 'border-danger/60 text-danger hover:bg-danger/10'
+          : 'border-accent/60 text-accent hover:bg-accent-dim'
+      }`}
+    >
+      👉 {blocked ? t('misc.off') : t('misc.on')}
+    </button>
+  );
+}
+
+function feedAgo(iso: string): string {
+  const min = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+/** Friends' recent wins — records, streaks, finished jams. Data is
+ *  self-reported by each client and only ever spans already-visible facts. */
+function FeedSection({ soc }: { soc: SocialHook }) {
+  const [events, setEvents] = useState<social.FeedEvent[]>([]);
+  const [shareOff, setShareOff] = useState(
+    () => localStorage.getItem('feed-share-off') === '1',
+  );
+  useEffect(() => {
+    social
+      .fetchFeed()
+      .then(setEvents)
+      .catch(() => {});
+  }, []);
+  const me = soc.state?.me;
+  const nameOf = (uid: string) => {
+    if (uid === me?.user_id)
+      return { name: t('fr.me'), avatar: me?.avatar_b64 ?? null, me: true };
+    const f = soc.state?.friends.find((x) => x.userId === uid);
+    return { name: f ? `@${f.username}` : '@?', avatar: f?.avatar ?? null, me: false };
+  };
+  const line = (e: social.FeedEvent): string => {
+    const sec = e.payload?.sec ?? 0;
+    const n = e.payload?.n ?? 0;
+    if (e.kind === 'streak') return t('feed.streak', String(n));
+    if (e.kind === 'record_session') return t('feed.rec.session', formatDurationShort(sec));
+    if (e.kind === 'record_day') return t('feed.rec.day', formatDurationShort(sec));
+    return t('feed.jam', formatDurationShort(sec), String(n));
+  };
+  const visible = events.filter((e) => soc.state?.friends.some((f) => f.userId === e.user_id) || e.user_id === me?.user_id);
+  if (visible.length === 0) return null;
+  return (
+    <div className="space-y-1.5 rounded-2xl border border-border bg-surface/50 p-2.5">
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[10px] font-extrabold uppercase tracking-wide text-text-dim">
+          ⚡ {t('feed.title')}
+        </span>
+        <button
+          type="button"
+          title={t('feed.share.tip')}
+          onClick={() => {
+            const next = !shareOff;
+            localStorage.setItem('feed-share-off', next ? '1' : '0');
+            setShareOff(next);
+          }}
+          className={`text-[9px] font-extrabold uppercase ${shareOff ? 'text-danger' : 'text-text-faint hover:text-text'}`}
+        >
+          {shareOff ? t('feed.share.off') : t('feed.share.on')}
+        </button>
+      </div>
+      {visible.slice(0, 8).map((e) => {
+        const who = nameOf(e.user_id);
+        return (
+          <div key={e.id} className="flex items-center gap-2 px-0.5">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border-strong bg-bg text-[8px] font-extrabold uppercase text-text-dim">
+              {who.avatar ? (
+                <img src={who.avatar} alt="" className="h-full w-full object-cover" />
+              ) : (
+                who.name.replace('@', '').slice(0, 2)
+              )}
+            </div>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-text-dim">
+              <span className="font-bold text-text">{who.name}</span> {line(e)}
+            </span>
+            <span className="shrink-0 text-[9px] font-bold text-text-faint">
+              {feedAgo(e.created_at)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function statusLineFor(
+  status: social.FriendStatus,
+  row: PresenceRow | undefined,
+  customStatus?: string | null,
+): string {
   if (status === 'focusing') {
     const sec = row?.started_at
       ? Math.max(0, (Date.now() - new Date(row.started_at).getTime()) / 1000)
@@ -139,15 +249,18 @@ export function statusLineFor(status: social.FriendStatus, row: PresenceRow | un
       try {
         const list = JSON.parse(row.jam_members) as string[];
         if (list.length >= 2) {
-          const names = list.map((u) => `@${u}`).join(' ');
+          const names = list.map((u) => `@${cleanProfanity(u)}`).join(' ');
           return `🎧 ${t('fr.injam', names)} · ${formatDurationShort(sec)}`;
         }
       } catch {
         // fall through to the plain line
       }
     }
-    return `${t('fr.focusing', formatDurationShort(sec))}${row?.task ? ` · ${row.task}` : ''}`;
+    // display-side filter: the task text came from someone else's client
+    return `${t('fr.focusing', formatDurationShort(sec))}${row?.task ? ` · ${cleanProfanity(row.task)}` : ''}`;
   }
+  // not focusing → their hand-written status (filtered) beats the plain label
+  if (customStatus) return `“${cleanProfanity(customStatus)}”`;
   return status === 'online' ? t('fr.online') : t('fr.offline');
 }
 
@@ -243,6 +356,21 @@ function FriendProfile({
     }
   }
 
+  const [pokeSent, setPokeSent] = useState<social.PokeKind | null>(null);
+  async function poke(kind: social.PokeKind) {
+    const err = await social.sendPoke(friend.userId, kind);
+    if (err === 'rate') {
+      onError(t('poke.rate'));
+      return;
+    }
+    if (err) {
+      onError(err);
+      return;
+    }
+    setPokeSent(kind);
+    window.setTimeout(() => setPokeSent(null), 4000);
+  }
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-xl space-y-4 px-5 pb-10 pt-8">
@@ -270,12 +398,39 @@ function FriendProfile({
             <div className={`mt-1 text-sm font-semibold ${statusText(status)}`}>
               {statusLineFor(status, row)}
             </div>
+            {friend.statusText && (
+              <p className="mt-1 max-w-xs truncate text-xs font-bold italic text-text">
+                “{cleanProfanity(friend.statusText)}”
+              </p>
+            )}
             {friend.bio && (
               <p className="mt-1.5 max-w-xs text-xs font-medium leading-relaxed text-text-dim">
-                {friend.bio}
+                {cleanProfanity(friend.bio)}
               </p>
             )}
           </div>
+        </div>
+
+        {/* poke / cheer — server rate-limited (1/h · 1/10min), friends only */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={pokeSent !== null}
+            onClick={() => poke('poke')}
+            className="chunk-btn flex-1 py-2.5 text-xs text-text"
+          >
+            {pokeSent === 'poke' ? t('poke.sent') : `👉 ${t('poke.cta')}`}
+          </button>
+          {live && (
+            <button
+              type="button"
+              disabled={pokeSent !== null}
+              onClick={() => poke('cheer')}
+              className="chunk-btn flex-1 py-2.5 text-xs text-text"
+            >
+              {pokeSent === 'cheer' ? t('poke.sent') : `🔥 ${t('poke.cheer.cta')}`}
+            </button>
+          )}
         </div>
 
         {/* badges from their lifetime focus — click one for details */}
@@ -599,7 +754,10 @@ export function FriendsPage({
               {t('fr.you')} <span className="font-bold text-accent">@{me.username}</span>
             </p>
           </div>
-          <JamGateToggle />
+          <div className="flex shrink-0 gap-1.5">
+            <PokeGateToggle />
+            <JamGateToggle />
+          </div>
         </div>
 
         <form
@@ -710,7 +868,7 @@ export function FriendsPage({
                   <div className="min-w-0">
                     <div className="truncate text-sm font-bold text-text">@{f.username}</div>
                     <div className={`truncate text-[11px] font-medium ${statusText(status)}`}>
-                      {statusLineFor(status, row)}
+                      {statusLineFor(status, row, f.statusText)}
                     </div>
                   </div>
                 </div>
@@ -780,8 +938,8 @@ export function FriendsPage({
               return {
                 key: `g${g.group.id}`,
                 jamKey: keyOf(live.map((m) => m.username)),
-                title: g.group.name,
-                task: g.group.jam_task ?? '',
+                title: cleanProfanity(g.group.name),
+                task: cleanProfanity(g.group.jam_task ?? ''),
                 count: live.length,
                 avatars: live.map((m) => ({ name: m.username, avatar: m.avatar })),
                 onClick: () => openGroup(g.group.id),
@@ -809,7 +967,7 @@ export function FriendsPage({
               key: `f${f.userId}`,
               jamKey,
               title: `@${f.username}`,
-              task: row.task ?? '',
+              task: cleanProfanity(row.task ?? ''),
               count: names.length,
               avatars: names.slice(0, 5).map((n) => {
                 const fr = state.friends.find(
@@ -870,6 +1028,9 @@ export function FriendsPage({
           );
         })()}
 
+        {/* activity feed */}
+        <FeedSection soc={soc} />
+
         {/* groups */}
         <div className="space-y-1">
           <div className="flex items-center justify-between px-1">
@@ -920,7 +1081,9 @@ export function FriendsPage({
                   ))}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold text-text">{g.group.name}</div>
+                  <div className="truncate text-sm font-bold text-text">
+                    {cleanProfanity(g.group.name)}
+                  </div>
                   <div className="truncate text-[10px] font-semibold text-text-faint">
                     {t('grp.members', String(g.members.length))}
                   </div>
@@ -1017,13 +1180,17 @@ export function FriendsPage({
               myUserId={me.user_id}
               friends={state.friends}
               isLive={(uid) => social.isLive(soc.presence.get(uid))}
+              weekSecOf={(uid) => {
+                const row = soc.presence.get(uid);
+                return row && row.week_key === wk ? row.week_sec : 0;
+              }}
               refetchKey={groupsHook.tick}
               onError={onError}
               onBack={() => setGroupOpen(null)}
               meInJam={activeGroupJamId === openGroupSummary.group.id}
-              onStartJam={(task) => onStartGroupJam(openGroupSummary.group.id, task)}
-              onJoinJam={(task, startedAt) =>
-                onJoinGroupJam(openGroupSummary.group.id, task, startedAt)
+              onStartJam={(task, pomo) => onStartGroupJam(openGroupSummary.group.id, task, pomo)}
+              onJoinJam={(task, startedAt, pomo) =>
+                onJoinGroupJam(openGroupSummary.group.id, task, startedAt, pomo)
               }
               onLeaveJam={onLeaveGroupJam}
             />

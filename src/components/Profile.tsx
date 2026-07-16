@@ -82,6 +82,9 @@ export function ProfilePage({
   const [bio, setBio] = useState('');
   const [bioDirty, setBioDirty] = useState(false);
   const [bioSaving, setBioSaving] = useState(false);
+  const [statusLine, setStatusLine] = useState('');
+  const [statusDirty, setStatusDirty] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [badgeInfo, setBadgeInfo] = useState<Badge | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -90,6 +93,28 @@ export function ProfilePage({
     setBioDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.bio]);
+
+  useEffect(() => {
+    setStatusLine(me?.status_text ?? '');
+    setStatusDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.status_text]);
+
+  async function saveStatus() {
+    setStatusSaving(true);
+    try {
+      const clean = cleanProfanity(statusLine);
+      const err = await social.updateStatusText(clean);
+      if (err) onError(err);
+      else {
+        setStatusLine(clean.trim());
+        setStatusDirty(false);
+        soc.refresh();
+      }
+    } finally {
+      setStatusSaving(false);
+    }
+  }
 
   async function saveBio() {
     setBioSaving(true);
@@ -203,6 +228,37 @@ export function ProfilePage({
             </div>
           </div>
         </div>
+
+        {/* custom status — the short line friends see when you're not focusing */}
+        {signedIn && (
+          <div className="chunk p-4">
+            <div className="mb-1.5 text-xs font-extrabold uppercase tracking-wide text-text-dim">
+              {t('status.title')}
+            </div>
+            <input
+              value={statusLine}
+              onChange={(e) => {
+                setStatusLine(e.target.value.slice(0, 80));
+                setStatusDirty(true);
+              }}
+              placeholder={t('status.placeholder')}
+              className="chunk-input w-full px-3 py-2.5 text-sm font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+            />
+            <div className="mt-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-text-faint">{statusLine.length}/80</span>
+              {statusDirty && (
+                <button
+                  type="button"
+                  disabled={statusSaving}
+                  onClick={saveStatus}
+                  className="chunk-btn chunk-btn-accent px-4 py-1.5 text-xs"
+                >
+                  {statusSaving ? '…' : t('bio.save')}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* bio — free-form, profanity-filtered */}
         {signedIn && (

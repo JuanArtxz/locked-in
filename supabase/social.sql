@@ -558,3 +558,206 @@ drop policy if exists key_backups_own on public.key_backups;
 create policy key_backups_own on public.key_backups
   for all to authenticated
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ========== v0.26: status, pokes, feed, group goal/pomo, anti-abuse ==========
+
+-- custom status line ("grindando TCC"), filtered client-side, capped here
+alter table public.profiles add column if not exists status_text text
+  check (status_text is null or char_length(status_text) <= 80);
+
+-- group jam pomodoro rhythm ("25/5") + collective weekly goal (hours)
+alter table public.groups add column if not exists jam_pomo text
+  check (jam_pomo is null or jam_pomo ~ '^\d{1,3}/\d{1,2}$');
+alter table public.groups add column if not exists week_goal_hours int
+  check (week_goal_hours is null or week_goal_hours between 1 and 500);
+revoke update on public.groups from authenticated;
+grant update (name, jam_task, jam_started_at, jam_pomo, week_goal_hours)
+  on public.groups to authenticated;
+
+-- ---------- pokes: 👉 nudge a friend / 🔥 cheer someone focusing ----------
+create table if not exists public.pokes (
+  id bigint generated always as identity primary key,
+  from_user uuid not null references auth.users(id) on delete cascade,
+  to_user uuid not null references auth.users(id) on delete cascade,
+  kind text not null default 'poke' check (kind in ('poke', 'cheer')),
+  created_at timestamptz not null default now(),
+  check (from_user <> to_user)
+);
+create index if not exists pokes_inbox on public.pokes (to_user, created_at desc);
+
+alter table public.pokes enable row level security;
+
+-- friends only: the sender IS a party of the friendship row, so the
+-- friendships RLS lets this subquery see it
+drop policy if exists pokes_insert on public.pokes;
+create policy pokes_insert on public.pokes
+  for insert to authenticated
+  with check (
+    auth.uid() = from_user
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.requester = from_user and f.addressee = to_user)
+          or (f.requester = to_user and f.addressee = from_user))
+    )
+  );
+
+drop policy if exists pokes_select on public.pokes;
+create policy pokes_select on public.pokes
+  for select to authenticated using (auth.uid() in (from_user, to_user));
+-- no update/delete policies on purpose: history is what enforces the rate limit
+
+-- server-side anti-flood: poke 1/hour, cheer 1/10min per pair
+create or replace function public.poke_rate_limit()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if exists (
+    select 1 from pokes
+    where from_user = new.from_user and to_user = new.to_user and kind = new.kind
+      and created_at > now() - (case when new.kind = 'poke'
+                                     then interval '1 hour'
+                                     else interval '10 minutes' end)
+  ) then
+    raise exception 'rate limited';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists pokes_rate on public.pokes;
+create trigger pokes_rate before insert on public.pokes
+  for each row execute function public.poke_rate_limit();
+
+do $$
+begin
+  alter publication supabase_realtime add table public.pokes;
+exception when duplicate_object then null;
+end $$;
+
+-- ---------- activity feed: self-reported wins, visible to friends ----------
+-- GOLDEN RULE: events only carry data friends can already see or that the
+-- owner explicitly chose to share. No goal contents (goals are private).
+create table if not exists public.feed_events (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null check (kind in ('streak', 'record_session', 'record_day', 'jam')),
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists feed_time on public.feed_events (user_id, created_at desc);
+
+alter table public.feed_events enable row level security;
+
+drop policy if exists feed_insert on public.feed_events;
+create policy feed_insert on public.feed_events
+  for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists feed_select on public.feed_events;
+create policy feed_select on public.feed_events
+  for select to authenticated
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.requester = auth.uid() and f.addressee = user_id)
+          or (f.addressee = auth.uid() and f.requester = user_id))
+    )
+  );
+
+drop policy if exists feed_delete_own on public.feed_events;
+create policy feed_delete_own on public.feed_events
+  for delete to authenticated using (auth.uid() = user_id);
+
+-- spam cap (20/day) + self-gc of events older than 30 days
+create or replace function public.feed_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from feed_events
+      where user_id = new.user_id and created_at > now() - interval '1 day') >= 20 then
+    raise exception 'feed daily cap reached';
+  end if;
+  delete from feed_events
+    where user_id = new.user_id and created_at < now() - interval '30 days';
+  return new;
+end;
+$$;
+drop trigger if exists feed_cap on public.feed_events;
+create trigger feed_cap before insert on public.feed_events
+  for each row execute function public.feed_guard();
+
+-- ---------- anti-abuse hardening ----------
+
+-- one pending jam invite per pair (kills invite flooding at the source);
+-- clean existing duplicates first so the index can build
+delete from public.jam_invites a using public.jam_invites b
+  where a.status = 'pending' and b.status = 'pending'
+    and a.from_user = b.from_user and a.to_user = b.to_user and a.id < b.id;
+create unique index if not exists jam_invites_one_pending
+  on public.jam_invites (from_user, to_user) where (status = 'pending');
+
+-- reactions: at most 8 emojis per user per message
+create or replace function public.reaction_cap()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from message_reactions
+      where message_id = new.message_id and user_id = new.user_id) >= 8 then
+    raise exception 'too many reactions on this message';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists reactions_cap on public.message_reactions;
+create trigger reactions_cap before insert on public.message_reactions
+  for each row execute function public.reaction_cap();
+
+-- presence guard: the leaderboard values (week_sec / total_sec) may only grow
+-- as fast as real time passes. updated_at is server-stamped so it can't be
+-- forged. Clamps instead of rejecting so an honest client never errors.
+create or replace function public.presence_guard()
+returns trigger language plpgsql as $$
+declare gap double precision;
+begin
+  gap := greatest(extract(epoch from (now() - old.updated_at)), 0);
+  new.updated_at := now();
+  if new.week_key = old.week_key then
+    if new.week_sec > old.week_sec + gap + 5 then
+      new.week_sec := (old.week_sec + gap + 5)::bigint;
+    end if;
+  else
+    -- fresh week starts near zero (allow an overnight session's carryover)
+    if new.week_sec > 21600 then
+      new.week_sec := 0;
+    end if;
+  end if;
+  if new.total_sec > old.total_sec + gap + 5 then
+    new.total_sec := (old.total_sec + gap + 5)::bigint;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists presence_guard_t on public.presence;
+create trigger presence_guard_t before update on public.presence
+  for each row execute function public.presence_guard();
+
+-- first insert: week_sec can't exceed the time elapsed in that week
+-- (total_sec is seeded freely — restoring a cloud backup on a new device
+-- legitimately carries lifetime hours)
+create or replace function public.presence_seed_guard()
+returns trigger language plpgsql as $$
+declare wk_start timestamptz;
+begin
+  new.updated_at := now();
+  if new.week_key ~ '^\d{4}-\d{2}-\d{2}$' then
+    wk_start := (new.week_key || 'T00:00:00Z')::timestamptz - interval '1 day';
+    if wk_start > now() or new.week_sec > extract(epoch from (now() - wk_start)) then
+      new.week_sec := 0;
+    end if;
+  else
+    new.week_sec := 0;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists presence_seed_t on public.presence;
+create trigger presence_seed_t before insert on public.presence
+  for each row execute function public.presence_seed_guard();

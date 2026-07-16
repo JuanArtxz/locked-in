@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { parsePomo } from '../hooks/useFocusSession';
 import type { UseFocusSession } from '../hooks/useFocusSession';
 import * as db from '../lib/db';
 import type { DayStat } from '../lib/db';
@@ -160,6 +161,26 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
               🎧 JAM · {focus.jam.members.map((m) => `@${m}`).join(' ')}
             </span>
           )}
+          {(() => {
+            // synced pomodoro chip — advisory only, derived from the shared clock
+            const p = parsePomo(focus.jam?.pomo);
+            if (!p || !focus.jam) return null;
+            const cycle = p.workSec + p.breakSec;
+            const pos = ((focus.displayElapsedSec % cycle) + cycle) % cycle;
+            const inWork = pos < p.workSec;
+            const left = inWork ? p.workSec - pos : cycle - pos;
+            const mm = Math.floor(left / 60);
+            const ss = String(Math.floor(left % 60)).padStart(2, '0');
+            return (
+              <span
+                className={`rounded-full border-2 px-3 py-0.5 font-mono text-xs font-bold tabular-nums ${
+                  inWork ? 'border-danger/50 text-danger' : 'border-sky-400/60 text-sky-400'
+                }`}
+              >
+                {inWork ? '🍅' : '☕'} {mm}:{ss}
+              </span>
+            );
+          })()}
         </div>
 
         <div

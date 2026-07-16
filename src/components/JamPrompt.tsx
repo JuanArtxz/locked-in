@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cleanProfanity } from '../lib/filter';
 import { t } from '../lib/i18n';
 import { formatDurationShort } from '../lib/time';
 import type { JamPrompt } from '../hooks/useJam';
@@ -48,7 +49,7 @@ export function JamPromptOverlay({ prompt, canAccept, onAccept, onDecline }: Jam
           @{prompt.username}
         </h2>
         <p className="mt-2 max-w-sm text-sm font-semibold leading-relaxed text-text-dim">
-          {isInvite ? t('jam.calling', prompt.task) : t('jam.wantsin', prompt.task)}
+          {isInvite ? t('jam.calling', cleanProfanity(prompt.task)) : t('jam.wantsin', cleanProfanity(prompt.task))}
         </p>
         <p className="mt-1 font-mono text-xs font-bold tabular-nums text-text-faint">
           {t('jam.started', formatDurationShort(ago))}

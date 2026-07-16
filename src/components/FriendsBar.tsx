@@ -180,7 +180,7 @@ export function FriendsBar({ social: soc, onOpenFriends, onOpenChat, unread, jam
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-bold text-text">{f.username}</div>
                     <div className={`truncate text-[10px] font-semibold ${statusText(status)}`}>
-                      {statusLineFor(status, row)}
+                      {statusLineFor(status, row, f.statusText)}
                     </div>
                   </div>
                   {(unread[f.userId] ?? 0) > 0 && (

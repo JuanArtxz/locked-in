@@ -631,6 +631,25 @@ export async function getLifetimeStats(): Promise<{ totalSec: number; sessionCou
   });
 }
 
+/** Personal records — longest single session and biggest day. */
+export async function getRecords(): Promise<{ bestSessionSec: number; bestDaySec: number }> {
+  return run('getRecords', async () => {
+    const db = await getDb();
+    const [s, d] = await Promise.all([
+      db.select<{ m: number | null }[]>(
+        'SELECT MAX(duration_sec) as m FROM sessions WHERE ended_at IS NOT NULL',
+      ),
+      db.select<{ m: number | null }[]>(
+        `SELECT MAX(t) as m FROM (
+           SELECT SUM(duration_sec) as t FROM sessions
+           WHERE ended_at IS NOT NULL GROUP BY date(started_at, 'localtime')
+         )`,
+      ),
+    ]);
+    return { bestSessionSec: s[0]?.m ?? 0, bestDaySec: d[0]?.m ?? 0 };
+  });
+}
+
 /** Total saved focus seconds for sessions started at/after the given instant. */
 export async function getFocusSecondsSince(sinceIso: string): Promise<number> {
   return run('getFocusSecondsSince', async () => {
