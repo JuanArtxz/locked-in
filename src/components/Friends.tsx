@@ -70,14 +70,20 @@ export function ClaimUsernameForm({ onClaimed }: { onClaimed: () => void }) {
   );
 }
 
+function statusDot(status: social.FriendStatus): string {
+  if (status === 'focusing') return 'animate-pulse-dot bg-accent';
+  if (status === 'online') return 'bg-accent';
+  return 'bg-border-strong';
+}
+
 function Avatar({
   name,
-  live,
+  status,
   photo,
   size = 'h-10 w-10',
 }: {
   name: string;
-  live: boolean;
+  status: social.FriendStatus;
   photo?: string | null;
   size?: string;
 }) {
@@ -89,9 +95,7 @@ function Avatar({
         {photo ? <img src={photo} alt="" className="h-full w-full object-cover" /> : name.slice(0, 2)}
       </div>
       <span
-        className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-surface ${
-          live ? 'animate-pulse-dot bg-accent' : 'bg-border-strong'
-        }`}
+        className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-surface ${statusDot(status)}`}
       />
     </div>
   );
@@ -118,7 +122,8 @@ function FriendProfile({
   const [jamSent, setJamSent] = useState(false);
 
   const row = soc.presence.get(friend.userId);
-  const live = social.isLive(row);
+  const status = social.friendStatus(row);
+  const live = status === 'focusing';
   const focusSec =
     live && row?.started_at
       ? Math.max(0, (Date.now() - new Date(row.started_at).getTime()) / 1000)
@@ -169,17 +174,21 @@ function FriendProfile({
             )}
           </div>
           <span
-            className={`absolute bottom-0 right-0 h-5 w-5 rounded-full border-4 border-surface ${
-              live ? 'animate-pulse-dot bg-accent' : 'bg-border-strong'
-            }`}
+            className={`absolute bottom-0 right-0 h-5 w-5 rounded-full border-4 border-surface ${statusDot(status)}`}
           />
         </div>
         <div className="min-w-0">
           <div className="truncate text-xl font-extrabold text-text">@{friend.username}</div>
-          <div className={`mt-0.5 text-sm font-semibold ${live ? 'text-accent' : 'text-text-faint'}`}>
+          <div
+            className={`mt-0.5 text-sm font-semibold ${
+              live ? 'text-accent' : status === 'online' ? 'text-accent/70' : 'text-text-faint'
+            }`}
+          >
             {live
               ? `${t('fr.focusing', formatDurationShort(focusSec))}${row?.task ? ` · ${row.task}` : ''}`
-              : t('fr.offline')}
+              : status === 'online'
+                ? t('fr.online')
+                : t('fr.offline')}
           </div>
           <div className="mt-1 text-xs font-medium text-text-dim">
             {t('fr.profile.week', formatDurationShort(weekSec))}
@@ -442,7 +451,7 @@ export function FriendsPage({ signedIn, social: soc, onError, myFocus, onSendJam
             {state.incoming.map((f) => (
               <div key={f.friendshipId} className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <Avatar name={f.username} live={false} photo={f.avatar} />
+                  <Avatar name={f.username} status="away" photo={f.avatar} />
                   <span className="truncate text-sm font-bold text-text">@{f.username}</span>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
@@ -500,9 +509,9 @@ export function FriendsPage({ signedIn, social: soc, onError, myFocus, onSendJam
           )}
           {state.friends.map((f) => {
             const row = soc.presence.get(f.userId);
-            const live = social.isLive(row);
+            const status = social.friendStatus(row);
             const focusSec =
-              live && row?.started_at
+              status === 'focusing' && row?.started_at
                 ? Math.max(0, (Date.now() - new Date(row.started_at).getTime()) / 1000)
                 : 0;
             return (
@@ -513,15 +522,17 @@ export function FriendsPage({ signedIn, social: soc, onError, myFocus, onSendJam
                 className="flex w-full items-center justify-between gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface-hover"
               >
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <Avatar name={f.username} live={live} photo={f.avatar} />
+                  <Avatar name={f.username} status={status} photo={f.avatar} />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-bold text-text">@{f.username}</div>
                     <div className="truncate text-[11px] font-medium text-text-dim">
-                      {live ? (
+                      {status === 'focusing' ? (
                         <span className="text-accent">
                           {t('fr.focusing', formatDurationShort(focusSec))}
                           {row?.task ? ` · ${row.task}` : ''}
                         </span>
+                      ) : status === 'online' ? (
+                        <span className="text-accent/70">{t('fr.online')}</span>
                       ) : (
                         t('fr.offline')
                       )}

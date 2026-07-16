@@ -104,6 +104,8 @@ create table if not exists public.presence (
   week_key text,
   updated_at timestamptz not null default now()
 );
+-- which app version this user runs (feature-compat checks between friends)
+alter table public.presence add column if not exists app_version text;
 
 alter table public.presence enable row level security;
 

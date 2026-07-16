@@ -106,7 +106,8 @@ export function FriendsBar({ social: soc, onOpenFriends }: FriendsBarProps) {
         ) : (
           state.friends.map((f) => {
             const row = soc.presence.get(f.userId);
-            const live = social.isLive(row);
+            const status = social.friendStatus(row);
+            const live = status === 'focusing';
             const focusSec =
               live && row?.started_at
                 ? Math.max(0, (Date.now() - new Date(row.started_at).getTime()) / 1000)
@@ -134,7 +135,11 @@ export function FriendsBar({ social: soc, onOpenFriends }: FriendsBarProps) {
                   </div>
                   <span
                     className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg ${
-                      live ? 'animate-pulse-dot bg-accent' : 'bg-border-strong'
+                      live
+                        ? 'animate-pulse-dot bg-accent'
+                        : status === 'online'
+                          ? 'bg-accent'
+                          : 'bg-border-strong'
                     }`}
                   />
                 </div>
@@ -142,12 +147,18 @@ export function FriendsBar({ social: soc, onOpenFriends }: FriendsBarProps) {
                   <div className="truncate text-[13px] font-bold text-text">{f.username}</div>
                   <div
                     className={`truncate text-[10px] font-semibold ${
-                      live ? 'text-accent' : 'text-text-faint'
+                      live
+                        ? 'text-accent'
+                        : status === 'online'
+                          ? 'text-accent/70'
+                          : 'text-text-faint'
                     }`}
                   >
                     {live
                       ? t('fr.focusing', formatDurationShort(focusSec))
-                      : t('fr.offline')}
+                      : status === 'online'
+                        ? t('fr.online')
+                        : t('fr.offline')}
                   </div>
                 </div>
               </button>

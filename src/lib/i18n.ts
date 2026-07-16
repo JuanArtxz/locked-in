@@ -59,6 +59,11 @@ const dict: Record<string, { pt: string; en: string }> = {
   'fr.cancel': { pt: 'cancelar', en: 'cancel' },
   'fr.focusing': { pt: 'focando há {0}', en: 'focusing for {0}' },
   'fr.offline': { pt: 'fora', en: 'away' },
+  'fr.online': { pt: 'online', en: 'online' },
+  'ver.old': {
+    pt: '@{0} tá numa versão antiga do app — pede pra ele atualizar pra usar isso',
+    en: '@{0} is on an old app version — ask them to update to use this',
+  },
   'fr.join': { pt: 'Focar junto', en: 'Focus too' },
   'fr.join.title': {
     pt: 'começa uma sessão agora, junto',

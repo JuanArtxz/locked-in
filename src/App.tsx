@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -174,10 +175,12 @@ function AppShell() {
   useEffect(() => {
     if (!signedIn) return;
     let cancelled = false;
+    let appVersion = '';
     const beat = async () => {
       const { phase, task, elapsedSec } = heartbeatRef.current;
       const focusing = phase === 'focusing';
       try {
+        if (!appVersion) appVersion = await getVersion().catch(() => '0.0.0');
         const saved = await db.getFocusSecondsSince(socialLib.weekStart().toISOString());
         if (cancelled) return;
         await socialLib.publishPresence({
@@ -185,6 +188,7 @@ function AppShell() {
           task: focusing ? task : null,
           startedAt: focusing ? new Date(Date.now() - elapsedSec * 1000).toISOString() : null,
           weekSec: saved + (focusing || phase === 'paused' ? elapsedSec : 0),
+          appVersion,
         });
       } catch {
         // offline — the next beat wins
@@ -446,6 +450,12 @@ function AppShell() {
 
   const sendJam = useCallback(
     async (f: FriendEntry, kind: 'invite' | 'request') => {
+      // feature handshake: the other side needs a build that knows about JAM
+      const presRow = social.presence.get(f.userId);
+      if (socialLib.versionBelow(presRow, '0.17.0')) {
+        pushToast(t('ver.old', f.username), 'error');
+        return;
+      }
       if (kind === 'invite') {
         const s = focusRef.current.activeSession;
         if (!s) return;

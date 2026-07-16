@@ -38,6 +38,7 @@ export interface PresenceRow {
   week_sec: number;
   week_key: string | null;
   updated_at: string;
+  app_version: string | null;
 }
 
 /** A presence row older than this is treated as offline (app closed/crashed). */
@@ -201,6 +202,7 @@ export interface PublishPresenceInput {
   /** ISO instant the running session started, null when idle */
   startedAt: string | null;
   weekSec: number;
+  appVersion: string;
 }
 
 export async function publishPresence(p: PublishPresenceInput): Promise<void> {
@@ -214,6 +216,7 @@ export async function publishPresence(p: PublishPresenceInput): Promise<void> {
     week_sec: Math.max(0, Math.floor(p.weekSec)),
     week_key: weekKey(),
     updated_at: new Date().toISOString(),
+    app_version: p.appVersion,
   });
 }
 
@@ -228,6 +231,34 @@ export async function fetchPresence(userIds: string[]): Promise<Map<string, Pres
 export function isLive(row: PresenceRow | undefined): boolean {
   if (!row || !row.focusing) return false;
   return Date.now() - new Date(row.updated_at).getTime() < PRESENCE_STALE_MS;
+}
+
+/** App open (fresh heartbeat), focusing or not. Stale row = app closed = away. */
+export function isOnline(row: PresenceRow | undefined): boolean {
+  if (!row) return false;
+  return Date.now() - new Date(row.updated_at).getTime() < PRESENCE_STALE_MS;
+}
+
+export type FriendStatus = 'focusing' | 'online' | 'away';
+
+export function friendStatus(row: PresenceRow | undefined): FriendStatus {
+  if (isLive(row)) return 'focusing';
+  if (isOnline(row)) return 'online';
+  return 'away';
+}
+
+/** True when the friend's app is older than the version a feature needs. */
+export function versionBelow(row: PresenceRow | undefined, min: string): boolean {
+  const v = row?.app_version;
+  if (!v) return true; // pre-versioning builds are old by definition
+  const a = v.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) return x < y;
+  }
+  return false;
 }
 
 /** Push notifications for presence changes; returns an unsubscribe fn. */

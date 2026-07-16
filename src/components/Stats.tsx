@@ -52,18 +52,24 @@ export function Stats({ settings, onError, refreshKey }: StatsProps) {
   const [avgOverrun, setAvgOverrun] = useState(0);
   const [sessions, setSessions] = useState<Session[]>([]);
 
+  // loaded flags keep the slots rendered (fixed height) from the very first
+  // paint — the cards fill in without shoving the page around
   const [insight, setInsight] = useState<Insight | null>(null);
+  const [insightLoaded, setInsightLoaded] = useState(false);
   useEffect(() => {
     computeInsight(settings?.daily_goal_hours ?? 4)
       .then(setInsight)
-      .catch(() => setInsight(null));
+      .catch(() => setInsight(null))
+      .finally(() => setInsightLoaded(true));
   }, [refreshKey, settings?.daily_goal_hours]);
 
   const [dayScore, setDayScore] = useState<DayScore | null>(null);
+  const [scoreLoaded, setScoreLoaded] = useState(false);
   useEffect(() => {
     computeDayScore(todayKey(), settings?.daily_goal_hours ?? 4, settings?.nudge_apps ?? '')
       .then(setDayScore)
-      .catch(() => setDayScore(null));
+      .catch(() => setDayScore(null))
+      .finally(() => setScoreLoaded(true));
   }, [refreshKey, settings?.daily_goal_hours, settings?.nudge_apps]);
 
   useEffect(() => {
@@ -205,47 +211,65 @@ export function Stats({ settings, onError, refreshKey }: StatsProps) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-8 px-4 pb-10 pt-6 sm:px-6 xl:max-w-4xl">
-        {insight && (
-          <div className="animate-fade-up flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
-            <div className="shrink-0">
-              <Mascot mood={insight.mood} size={34} />
-            </div>
-            <p className="min-w-0 flex-1 text-[13px] leading-relaxed">
-              <span className="font-bold text-text">
-                {getLang() === 'en' ? insight.headlineEn : insight.headlinePt}
-              </span>
-              <span className="text-text-dim">
-                {' — '}
-                {getLang() === 'en' ? insight.tipEn : insight.tipPt}
-              </span>
-            </p>
+        {(!insightLoaded || insight) && (
+          <div className="flex min-h-[58px] items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
+            {insight ? (
+              <>
+                <div className="shrink-0">
+                  <Mascot mood={insight.mood} size={34} />
+                </div>
+                <p className="min-w-0 flex-1 text-[13px] leading-relaxed">
+                  <span className="font-bold text-text">
+                    {getLang() === 'en' ? insight.headlineEn : insight.headlinePt}
+                  </span>
+                  <span className="text-text-dim">
+                    {' — '}
+                    {getLang() === 'en' ? insight.tipEn : insight.tipPt}
+                  </span>
+                </p>
+              </>
+            ) : (
+              <>
+                <span className="skeleton h-9 w-9 shrink-0 !rounded-full">.</span>
+                <span className="skeleton h-4 w-3/4">.</span>
+              </>
+            )}
           </div>
         )}
 
-        {dayScore && (
-          <div className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4">
-            <div
-              className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-4 font-mono text-xl font-bold tabular-nums ${
-                dayScore.score >= 70
-                  ? 'border-accent text-accent'
-                  : dayScore.score >= 40
-                    ? 'border-warn text-warn'
-                    : 'border-border-strong text-text-dim'
-              }`}
-            >
-              {dayScore.score}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-bold text-text">{t('score.title')}</div>
-              <div className="mt-0.5 text-xs leading-relaxed text-text-dim">
-                {t(
-                  'score.parts',
-                  String(dayScore.goalPart),
-                  String(dayScore.purityPart),
-                  String(dayScore.ratingPart),
-                )}
-              </div>
-            </div>
+        {(!scoreLoaded || dayScore) && (
+          <div className="flex min-h-[96px] items-center gap-4 rounded-2xl border border-border bg-surface p-4">
+            {dayScore ? (
+              <>
+                <div
+                  className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-4 font-mono text-xl font-bold tabular-nums ${
+                    dayScore.score >= 70
+                      ? 'border-accent text-accent'
+                      : dayScore.score >= 40
+                        ? 'border-warn text-warn'
+                        : 'border-border-strong text-text-dim'
+                  }`}
+                >
+                  {dayScore.score}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-text">{t('score.title')}</div>
+                  <div className="mt-0.5 text-xs leading-relaxed text-text-dim">
+                    {t(
+                      'score.parts',
+                      String(dayScore.goalPart),
+                      String(dayScore.purityPart),
+                      String(dayScore.ratingPart),
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="skeleton h-16 w-16 shrink-0 !rounded-2xl">.</span>
+                <span className="skeleton h-4 w-1/2">.</span>
+              </>
+            )}
           </div>
         )}
 
