@@ -719,6 +719,7 @@ const SETTINGS_DEFAULTS: Settings = {
   quotes_enabled: false,
   quotes_interval_min: 30,
   profile_projects_public: false,
+  friends_bar_enabled: true,
 };
 
 // ---------- reference board ----------

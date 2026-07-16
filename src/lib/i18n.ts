@@ -107,6 +107,11 @@ const dict: Record<string, { pt: string; en: string }> = {
     pt: 'adiciona um amigo agora!',
     en: 'add a friend now!',
   },
+  'set.friendsbar': { pt: 'Barra lateral de amigos', en: 'Friends sidebar' },
+  'set.friendsbar.hint': {
+    pt: 'mostra teus amigos e quem tá focando agora na lateral direita',
+    en: 'shows your friends and who is focusing right now on the right edge',
+  },
   'cmd.placeholder': { pt: 'pra onde? (Ctrl+K)', en: 'where to? (Ctrl+K)' },
   'cmd.none': { pt: 'nada com esse nome', en: 'nothing by that name' },
   'cmd.focus': { pt: 'Iniciar foco', en: 'Start focusing' },

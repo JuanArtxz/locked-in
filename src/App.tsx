@@ -954,7 +954,7 @@ function AppShell() {
         )}
         {tab === 'settings' && <SettingsScreen settingsHook={settingsHook} onError={onError} />}
       </main>
-      {signedIn && tab !== 'friends' && (
+      {signedIn && tab !== 'friends' && settingsHook.settings?.friends_bar_enabled !== false && (
         <FriendsBar social={social} onOpenFriends={() => setTab('friends')} />
       )}
       </div>

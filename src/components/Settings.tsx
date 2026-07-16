@@ -446,6 +446,12 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
               onChange={(v) => update('profile_projects_public', v)}
             />
           </Field>
+          <Field label={t('set.friendsbar')} hint={t('set.friendsbar.hint')}>
+            <Toggle
+              checked={settings.friends_bar_enabled}
+              onChange={(v) => update('friends_bar_enabled', v)}
+            />
+          </Field>
         </Section>
 
         <Section title={t('set.system')}>

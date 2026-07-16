@@ -87,6 +87,7 @@ export interface Settings {
   quotes_enabled: boolean;
   quotes_interval_min: number;
   profile_projects_public: boolean;
+  friends_bar_enabled: boolean;
 }
 
 /** One image pinned on the PureRef-style reference board. */
