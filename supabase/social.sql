@@ -136,3 +136,12 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+-- realtime: friend requests / accepts arrive instantly (RLS applies: only the
+-- two people involved receive INSERT/UPDATE events for a row)
+do $$
+begin
+  alter publication supabase_realtime add table public.friendships;
+exception
+  when duplicate_object then null;
+end $$;

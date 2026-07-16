@@ -61,12 +61,21 @@ export function useSocial(signedIn: boolean, onError: (m: string) => void): Soci
     }
     refresh();
     const presenceIv = window.setInterval(refreshPresence, 45_000);
-    const friendsIv = window.setInterval(refresh, 90_000);
-    const unsub = social.subscribePresence(refreshPresence);
+    // slow poll only as backstop — realtime pushes handle the fast path
+    const friendsIv = window.setInterval(refresh, 120_000);
+    const unsubPresence = social.subscribePresence(refreshPresence);
+    // coalesce push bursts (request + accept + …) into one reload
+    let debounce: number | null = null;
+    const unsubFriendships = social.subscribeFriendships(() => {
+      if (debounce) window.clearTimeout(debounce);
+      debounce = window.setTimeout(refresh, 300);
+    });
     return () => {
       window.clearInterval(presenceIv);
       window.clearInterval(friendsIv);
-      unsub();
+      if (debounce) window.clearTimeout(debounce);
+      unsubPresence();
+      unsubFriendships();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn]);

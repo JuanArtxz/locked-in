@@ -240,3 +240,18 @@ export function subscribePresence(onChange: () => void): () => void {
     supabase.removeChannel(channel).catch(() => {});
   };
 }
+
+/**
+ * Push notifications for friendship changes (new request, accept). RLS limits
+ * INSERT/UPDATE events to the two people involved; deletes may not push under
+ * RLS, so the caller keeps a slow poll as backstop.
+ */
+export function subscribeFriendships(onChange: () => void): () => void {
+  const channel = supabase
+    .channel('friendships-watch')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, onChange)
+    .subscribe();
+  return () => {
+    supabase.removeChannel(channel).catch(() => {});
+  };
+}
