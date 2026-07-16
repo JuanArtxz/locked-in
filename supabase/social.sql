@@ -306,6 +306,13 @@ create or replace function public.is_group_owner(gid bigint)
 returns boolean language sql security definer set search_path = public as $$
   select exists (select 1 from groups where id = gid and owner = auth.uid());
 $$;
+-- is the given user the owner of the given group (any-user variant)
+create or replace function public.is_group_owner_row(gid bigint, uid uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select exists (select 1 from groups where id = gid and owner = uid);
+$$;
+revoke all on function public.is_group_owner_row(bigint, uuid) from public;
+grant execute on function public.is_group_owner_row(bigint, uuid) to authenticated;
 revoke all on function public.is_group_member(bigint) from public;
 revoke all on function public.is_group_admin(bigint) from public;
 revoke all on function public.is_group_owner(bigint) from public;
@@ -326,6 +333,21 @@ $$;
 drop trigger if exists group_cap on public.group_members;
 create trigger group_cap before insert on public.group_members
   for each row execute function public.enforce_group_cap();
+
+-- only admins may flip is_admin — a member updates their OWN row to toggle
+-- in_jam, and the column grant would otherwise let them self-promote
+create or replace function public.guard_admin_flag()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.is_admin is distinct from old.is_admin and not public.is_group_admin(new.group_id) then
+    raise exception 'only admins can change admin status';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists group_admin_guard on public.group_members;
+create trigger group_admin_guard before update on public.group_members
+  for each row execute function public.guard_admin_flag();
 
 alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
@@ -383,10 +405,14 @@ create policy gm_update on public.group_members
 revoke update on public.group_members from authenticated;
 grant update (in_jam, is_admin) on public.group_members to authenticated;
 
+-- self-leave always; admins may kick anyone EXCEPT the owner
 drop policy if exists gm_delete on public.group_members;
 create policy gm_delete on public.group_members
   for delete to authenticated
-  using (auth.uid() = user_id or public.is_group_admin(group_id));
+  using (
+    auth.uid() = user_id
+    or (public.is_group_admin(group_id) and not public.is_group_owner_row(group_id, user_id))
+  );
 
 -- messages: members read + write; author deletes
 drop policy if exists gmsg_select on public.group_messages;
