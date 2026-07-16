@@ -609,7 +609,7 @@ export async function getProjectSecondsSince(
     const db = await getDb();
     const params: unknown[] = [project];
     let query =
-      "SELECT COALESCE(SUM(duration_sec), 0) as s FROM sessions WHERE ended_at IS NOT NULL AND project = $1";
+      "SELECT COALESCE(SUM(duration_sec), 0) as s FROM sessions WHERE ended_at IS NOT NULL AND project = $1 COLLATE NOCASE";
     if (sinceIso) {
       params.push(sinceIso);
       query += ` AND started_at >= $${params.length}`;

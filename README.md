@@ -32,7 +32,8 @@ There's a pixel mascot that gets happier the longer you stay focused. It judges 
 | 😤 **Anti-procrastination** | 5 continuous minutes on Discord/Instagram/TikTok → a pretty nudge with an angry mascot (watchlist is editable) |
 | 📊 **Real analytics** | 6-month heatmap, week vs. your own average, best hour per project, distraction profile |
 | 🔁 **Weekly habits** | No fixed days, no schedule: a weekly target you tick whenever you did the thing |
-| 🤖 **Chat with your data** | AI (Claude) answers questions about YOUR history via local SQL — bring your own API key |
+| 💡 **Local insights** | Rule-based observations about your own data (best hour, week vs. week, dominant app) — no AI, works offline |
+| 🎯 **Project goals** | Per-project hour targets with progress and the daily pace needed to hit a deadline |
 | 🖥️ **Floating overlay** | Tiny always-on-top window with the timer, the mascot and your daily goal bar |
 | 🏆 **Milestones** | 10h on a project, goal streaks, personal records — celebrated on the spot |
 | 🔄 **Auto-updates** | One click in the update popup: downloads, installs with a progress screen and restarts itself (cryptographically signed) |
@@ -46,7 +47,7 @@ There's a pixel mascot that gets happier the longer you stay focused. It judges 
 - **Optional cloud account** (opt-in): create an account in Settings to back up your history and restore it on a new PC. Auth and storage run on Supabase with Row Level Security — every row is readable/writable only by its owner, enforced server-side. The key embedded in this repo is Supabase's *anon key*, which is public by design and grants nothing without RLS passing.
 - **No third-party AI.** Insights are generated locally by simple rules over your own data — no API, no key, no cost, works offline.
 - **Zero telemetry, zero analytics.**
-- Network requests the app makes: update checks against this repository, cloud sync (only if you sign in) and the AI (only if you enable it).
+- Network requests the app makes: update checks against this repository and cloud sync (only if you sign in). Nothing else.
 - Updates are signed: the app only installs updates whose signature matches the public key baked into the binary.
 
 ## 📦 Install
@@ -79,7 +80,7 @@ Time-critical logic (hourly check-in, procrastination watcher) runs on native Ru
 
 ```
 src/                      # React frontend
-  components/             # screens: Home, Checkin, Habits, Week, Log, Stats, Chat, Settings
+  components/             # screens: Home, Checkin, Habits, Week, Goals, Log, Stats, Settings
   components/Popup.tsx    # corner popup window (check-in, nudge, notices, updates)
   components/Overlay.tsx  # floating mini window
   components/Mascot.tsx   # the pixel mascot (7 moods, walks, celebrates)
@@ -93,7 +94,7 @@ src-tauri/
 
 ## 🤝 Contributing
 
-Issues and PRs welcome. This is a personal, opinionated app — features that add accounts, cloud sync or telemetry won't be merged.
+Issues and PRs welcome. This is a personal, opinionated app — features that add telemetry or third-party AI won't be merged.
 
 ## 📄 License
 
