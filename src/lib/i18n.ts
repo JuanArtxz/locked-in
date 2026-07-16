@@ -21,10 +21,35 @@ const dict: Record<string, { pt: string; en: string }> = {
   'tab.checkin': { pt: 'Check-in', en: 'Check-in' },
   'tab.habits': { pt: 'Hábitos', en: 'Habits' },
   'tab.week': { pt: 'Semana', en: 'Week' },
+  'tab.goals': { pt: 'Metas', en: 'Goals' },
   'tab.log': { pt: 'Histórico', en: 'History' },
   'tab.stats': { pt: 'Stats', en: 'Stats' },
-  'tab.chat': { pt: 'Chat', en: 'Chat' },
   'tab.settings': { pt: 'Ajustes', en: 'Settings' },
+
+  // goals
+  'goals.title': { pt: 'Metas por projeto', en: 'Project goals' },
+  'goals.sub': {
+    pt: 'define um alvo de horas e acompanha o ritmo',
+    en: 'set an hours target and track your pace',
+  },
+  'goals.new': { pt: '+ nova meta', en: '+ new goal' },
+  'goals.project.placeholder': { pt: 'projeto (ex: Crashout)', en: 'project (e.g. Crashout)' },
+  'goals.target': { pt: 'Alvo', en: 'Target' },
+  'goals.deadline': { pt: 'Prazo (opcional)', en: 'Deadline (optional)' },
+  'goals.create': { pt: 'Criar meta', en: 'Create goal' },
+  'goals.empty': {
+    pt: 'nenhuma meta ainda — cria a primeira',
+    en: 'no goals yet — create your first',
+  },
+  'goals.until': { pt: 'até {0}', en: 'by {0}' },
+  'goals.notime': { pt: 'sem prazo', en: 'no deadline' },
+  'goals.done': { pt: 'meta batida 🏆', en: 'goal hit 🏆' },
+  'goals.left': { pt: 'faltam {0}', en: '{0} left' },
+  'goals.pace': {
+    pt: 'faltam {0} em {1} dias — {2}/dia',
+    en: '{0} left over {1} days — {2}/day',
+  },
+  'goals.overdue': { pt: 'prazo estourado', en: 'past deadline' },
 
   // first run
   'firstrun.title': { pt: 'escolhe teu idioma', en: 'pick your language' },

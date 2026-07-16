@@ -293,21 +293,6 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
           </Field>
         </Section>
 
-        <Section title={t('set.ai')}>
-          <div className="px-4 py-3.5">
-            <div className="text-sm text-text">{t('set.ai.key')}</div>
-            <div className="mt-0.5 text-xs text-text-faint">{t('set.ai.hint')}</div>
-            <input
-              type="password"
-              value={settings.anthropic_api_key}
-              onChange={(e) => update('anthropic_api_key', e.target.value)}
-              placeholder="sk-ant-…"
-              autoComplete="off"
-              className="mt-2.5 w-full rounded-lg border border-border bg-bg px-3 py-2 font-mono text-xs text-text transition-colors placeholder:text-text-faint focus:border-accent"
-            />
-          </div>
-        </Section>
-
         <Section title={t('set.autotrack')}>
           <Field label={t('set.autotrack.enable')} hint={t('set.autotrack.enable.hint')}>
             <Toggle

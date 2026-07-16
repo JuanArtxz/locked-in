@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { Chat } from './components/Chat';
 import { CheckinPage } from './components/Checkin';
+import { GoalsPage } from './components/Goals';
 import { Login } from './components/Login';
 import { Splash } from './components/Splash';
 import { HabitsPage } from './components/Habits';
@@ -31,16 +31,16 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`;
 }
 
-type Tab = 'home' | 'checkin' | 'habits' | 'week' | 'log' | 'stats' | 'chat' | 'settings';
+type Tab = 'home' | 'checkin' | 'habits' | 'week' | 'goals' | 'log' | 'stats' | 'settings';
 
 const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'home', labelKey: 'tab.home' },
   { id: 'checkin', labelKey: 'tab.checkin' },
   { id: 'habits', labelKey: 'tab.habits' },
   { id: 'week', labelKey: 'tab.week' },
+  { id: 'goals', labelKey: 'tab.goals' },
   { id: 'log', labelKey: 'tab.log' },
   { id: 'stats', labelKey: 'tab.stats' },
-  { id: 'chat', labelKey: 'tab.chat' },
   { id: 'settings', labelKey: 'tab.settings' },
 ];
 
@@ -730,16 +730,10 @@ function AppShell() {
             dailyGoalHours={settingsHook.settings?.daily_goal_hours ?? 4}
           />
         )}
+        {tab === 'goals' && <GoalsPage onError={onError} refreshKey={refreshKey} />}
         {tab === 'log' && <Log onError={onError} refreshKey={refreshKey} />}
         {tab === 'stats' && (
           <Stats settings={settingsHook.settings} onError={onError} refreshKey={refreshKey} />
-        )}
-        {tab === 'chat' && (
-          <Chat
-            apiKey={settingsHook.settings?.anthropic_api_key ?? ''}
-            onError={onError}
-            onOpenSettings={() => setTab('settings')}
-          />
         )}
         {tab === 'settings' && <SettingsScreen settingsHook={settingsHook} onError={onError} />}
       </main>

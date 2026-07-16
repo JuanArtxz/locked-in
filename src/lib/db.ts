@@ -568,6 +568,57 @@ export async function getHabitLogsSince(
   });
 }
 
+// ---------- project goals ----------
+
+export async function listGoals(): Promise<import('../types').ProjectGoal[]> {
+  return run('listGoals', async () => {
+    const db = await getDb();
+    return db.select<import('../types').ProjectGoal[]>(
+      'SELECT * FROM project_goals WHERE archived = 0 ORDER BY created_at DESC',
+    );
+  });
+}
+
+export async function createGoal(
+  project: string,
+  targetHours: number,
+  deadline: string | null,
+): Promise<void> {
+  return run('createGoal', async () => {
+    const db = await getDb();
+    await db.execute(
+      'INSERT INTO project_goals (project, target_hours, deadline, created_at) VALUES ($1, $2, $3, $4)',
+      [project, targetHours, deadline, nowIso()],
+    );
+  });
+}
+
+export async function deleteGoal(id: number): Promise<void> {
+  return run('deleteGoal', async () => {
+    const db = await getDb();
+    await db.execute('DELETE FROM project_goals WHERE id = $1', [id]);
+  });
+}
+
+/** Seconds focused on a project since a given ISO time (all time if omitted). */
+export async function getProjectSecondsSince(
+  project: string,
+  sinceIso?: string,
+): Promise<number> {
+  return run('getProjectSecondsSince', async () => {
+    const db = await getDb();
+    const params: unknown[] = [project];
+    let query =
+      "SELECT COALESCE(SUM(duration_sec), 0) as s FROM sessions WHERE ended_at IS NOT NULL AND project = $1";
+    if (sinceIso) {
+      params.push(sinceIso);
+      query += ` AND started_at >= $${params.length}`;
+    }
+    const rows = await db.select<{ s: number }[]>(query, params);
+    return rows[0]?.s ?? 0;
+  });
+}
+
 // ---------- milestones ----------
 
 export async function getSessionCount(): Promise<number> {
@@ -872,6 +923,7 @@ export interface Snapshot {
   hourly_logs: Record<string, unknown>[];
   milestones: Record<string, unknown>[];
   chat_conversations: Record<string, unknown>[];
+  project_goals?: Record<string, unknown>[];
   settings: Record<string, string>;
 }
 
@@ -883,6 +935,7 @@ const SNAPSHOT_TABLES = [
   'hourly_logs',
   'milestones',
   'chat_conversations',
+  'project_goals',
 ] as const;
 
 // Foreign keys: breaks.session_id → sessions, habit_logs.habit_id → habits.
@@ -896,6 +949,7 @@ const DELETE_ORDER = [
   'hourly_logs',
   'milestones',
   'chat_conversations',
+  'project_goals',
 ] as const;
 const INSERT_ORDER = [
   'sessions',
@@ -905,6 +959,7 @@ const INSERT_ORDER = [
   'hourly_logs',
   'milestones',
   'chat_conversations',
+  'project_goals',
 ] as const;
 
 export async function exportAll(): Promise<Snapshot> {

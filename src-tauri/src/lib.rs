@@ -860,6 +860,12 @@ fn migrations() -> Vec<Migration> {
       sql: include_str!("../migrations/011_refboard.sql"),
       kind: MigrationKind::Up,
     },
+    Migration {
+      version: 12,
+      description: "project_goals",
+      sql: include_str!("../migrations/012_goals.sql"),
+      kind: MigrationKind::Up,
+    },
   ]
 }
 

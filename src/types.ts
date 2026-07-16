@@ -116,6 +116,15 @@ export interface BlockerState {
   snoozesLeft: number;
 }
 
+export interface ProjectGoal {
+  id: number;
+  project: string;
+  target_hours: number;
+  deadline: string | null;
+  created_at: string;
+  archived: number;
+}
+
 export interface Habit {
   id: number;
   name: string;
