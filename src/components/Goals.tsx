@@ -40,6 +40,14 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
 
   useEffect(reload, [reload, refreshKey]);
 
+  // goals change rarely — push them to the cloud right away instead of waiting
+  // for the next session-save/15min sync window
+  function syncCloud() {
+    import('../lib/cloud')
+      .then((c) => c.currentUser().then((u) => (u ? c.uploadSnapshot() : null)))
+      .catch(() => {});
+  }
+
   async function save() {
     const p = project.trim();
     if (!p || hours <= 0) return;
@@ -50,6 +58,7 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
       setDeadline('');
       setAdding(false);
       reload();
+      syncCloud();
     } catch (err) {
       onError(String(err));
     }
@@ -65,6 +74,7 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
     try {
       await db.deleteGoal(id);
       reload();
+      syncCloud();
     } catch (err) {
       onError(String(err));
     }

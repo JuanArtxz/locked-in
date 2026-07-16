@@ -370,14 +370,15 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
   const name = settings?.user_name?.trim();
 
   return (
-    <div className="flex h-full flex-col items-center justify-center px-6">
+    <div className="h-full overflow-y-auto">
+    <div className="flex min-h-full flex-col items-center justify-center px-6 py-5">
       <div className="mb-2 text-sm text-text-dim">
         {greeting}
         {name ? `, ${name}` : ''}
       </div>
 
       <div
-        className="pointer-events-none mb-8 font-mono text-[clamp(40px,8vw,68px)] font-medium leading-none tabular-nums tracking-tight text-text-faint/40 select-none"
+        className="pointer-events-none mb-6 font-mono text-[clamp(40px,8vw,68px)] font-medium leading-none tabular-nums tracking-tight text-text-faint/40 select-none"
         aria-hidden
       >
         00:00:00
@@ -418,7 +419,7 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
         <button
           type="submit"
           disabled={!task.trim()}
-          className="chunk-btn chunk-btn-accent mt-7 px-12 py-4 text-lg tracking-tight"
+          className="chunk-btn chunk-btn-accent mt-6 px-12 py-4 text-lg tracking-tight"
         >
           LOCK IN
         </button>
@@ -443,7 +444,7 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
       </form>
 
       {today && (
-        <div className="mt-8 w-full max-w-xl rounded-2xl border border-border bg-surface p-5">
+        <div className="mt-5 w-full max-w-xl rounded-2xl border border-border bg-surface p-5 xl:max-w-2xl">
           <div className="mb-3 flex items-baseline justify-between">
             <div className="flex items-baseline gap-2">
               <span className="font-mono text-2xl font-medium tabular-nums text-text">
@@ -479,22 +480,26 @@ export function Home({ focus, settings, onError, refreshKey, onOpenHabits }: Hom
       )}
 
       {insight && (
-        <div className="animate-fade-up mt-4 flex w-full max-w-xl items-start gap-3 rounded-2xl border-2 border-border-strong bg-surface p-4">
-          <Mascot mood={insight.mood} size={40} />
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-bold text-text">
-              {getLang() === 'en' ? insight.headlineEn : insight.headlinePt}
-            </div>
-            <div className="mt-0.5 text-xs leading-relaxed text-text-dim">
-              {getLang() === 'en' ? insight.tipEn : insight.tipPt}
-            </div>
+        <div className="animate-fade-up mt-3 flex w-full max-w-xl items-center gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-2.5 xl:max-w-2xl">
+          <div className="shrink-0">
+            <Mascot mood={insight.mood} size={30} />
           </div>
+          <p className="min-w-0 flex-1 text-xs leading-relaxed">
+            <span className="font-bold text-text">
+              {getLang() === 'en' ? insight.headlineEn : insight.headlinePt}
+            </span>
+            <span className="text-text-dim">
+              {' — '}
+              {getLang() === 'en' ? insight.tipEn : insight.tipPt}
+            </span>
+          </p>
         </div>
       )}
 
-      <div className="mt-5">
+      <div className="mt-4">
         <HabitChips onError={onError} onOpenHabits={onOpenHabits} />
       </div>
+    </div>
     </div>
   );
 }

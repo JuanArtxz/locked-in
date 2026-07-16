@@ -45,7 +45,11 @@ export function useSocial(signedIn: boolean, onError: (m: string) => void): Soci
         stateRef.current = s;
         return refreshPresence();
       })
-      .catch((err) => onError(String(err)))
+      .catch((err) => {
+        // social tables not created yet (supabase/social.sql not run) — stay
+        // quiet instead of toasting on every poll
+        if (!/schema cache|does not exist/i.test(String(err))) onError(String(err));
+      })
       .finally(() => setLoading(false));
   }, [signedIn, onError, refreshPresence]);
 

@@ -14,6 +14,55 @@ interface FriendsProps {
   onJoinFocus: (task: string) => void;
 }
 
+/** Username claim form — used by the Friends tab and the mandatory app modal. */
+export function ClaimUsernameForm({ onClaimed }: { onClaimed: () => void }) {
+  const [name, setName] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const valid = social.USERNAME_RE.test(name.trim().replace(/^@/, ''));
+
+  async function claim() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await social.claimUsername(name.trim().replace(/^@/, ''));
+      if (r === 'ok') onClaimed();
+      else if (r === 'taken') setErr(t('fr.err.taken'));
+      else if (r === 'invalid') setErr(t('fr.claim.rules'));
+      else setErr(t('fr.err.generic'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <input
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          setErr(null);
+        }}
+        placeholder={t('fr.claim.placeholder')}
+        autoFocus
+        maxLength={21}
+        onKeyDown={(e) => e.key === 'Enter' && valid && !busy && claim()}
+        className="chunk-input mt-4 w-full px-4 py-3 text-center text-[15px] font-bold text-text placeholder:font-medium placeholder:text-text-faint"
+      />
+      <p className="mt-1.5 text-[11px] font-medium text-text-faint">{t('fr.claim.rules')}</p>
+      {err && <div className="mt-2 text-xs font-bold text-danger">{err}</div>}
+      <button
+        type="button"
+        disabled={busy || !valid}
+        onClick={claim}
+        className="chunk-btn chunk-btn-accent mt-4 w-full py-3 text-sm"
+      >
+        {busy ? '…' : t('fr.claim.cta')}
+      </button>
+    </>
+  );
+}
+
 function Avatar({ name, live }: { name: string; live: boolean }) {
   return (
     <div className="relative">
@@ -32,8 +81,6 @@ function Avatar({ name, live }: { name: string; live: boolean }) {
 export function FriendsPage({ signedIn, social: soc, onError, onJoinFocus }: FriendsProps) {
   const [addName, setAddName] = useState('');
   const [addMsg, setAddMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const [claimName, setClaimName] = useState('');
-  const [claimErr, setClaimErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmUnfriend, setConfirmUnfriend] = useState<number | null>(null);
 
@@ -80,57 +127,16 @@ export function FriendsPage({ signedIn, social: soc, onError, onJoinFocus }: Fri
 
   // ---- claim a username (account created before the social update) ----
   if (!state.me) {
-    const valid = social.USERNAME_RE.test(claimName.trim());
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
           <Mascot mood="happy" size={72} />
           <h2 className="mt-3 text-lg font-extrabold text-text">{t('fr.claim.title')}</h2>
           <p className="mt-1 text-xs font-medium text-text-dim">{t('fr.claim.body')}</p>
-          <input
-            value={claimName}
-            onChange={(e) => {
-              setClaimName(e.target.value);
-              setClaimErr(null);
-            }}
-            placeholder={t('fr.claim.placeholder')}
-            autoFocus
-            maxLength={20}
-            onKeyDown={(e) => e.key === 'Enter' && valid && claim()}
-            className="chunk-input mt-4 w-full px-4 py-3 text-center text-[15px] font-bold text-text placeholder:font-medium placeholder:text-text-faint"
-          />
-          <p className="mt-1.5 text-[11px] font-medium text-text-faint">{t('fr.claim.rules')}</p>
-          {claimErr && <div className="mt-2 text-xs font-bold text-danger">{claimErr}</div>}
-          <button
-            type="button"
-            disabled={busy || !valid}
-            onClick={claim}
-            className="chunk-btn chunk-btn-accent mt-4 w-full py-3 text-sm"
-          >
-            {busy ? '…' : t('fr.claim.cta')}
-          </button>
+          <ClaimUsernameForm onClaimed={soc.refresh} />
         </div>
       </div>
     );
-  }
-
-  async function claim() {
-    setBusy(true);
-    setClaimErr(null);
-    try {
-      const r = await social.claimUsername(claimName);
-      if (r === 'ok') {
-        soc.refresh();
-      } else if (r === 'taken') {
-        setClaimErr(t('fr.err.taken'));
-      } else if (r === 'invalid') {
-        setClaimErr(t('fr.claim.rules'));
-      } else {
-        setClaimErr(t('fr.err.generic'));
-      }
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function addFriend() {

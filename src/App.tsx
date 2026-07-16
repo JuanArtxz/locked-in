@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { CheckinPage } from './components/Checkin';
-import { FriendsPage } from './components/Friends';
+import { ClaimUsernameForm, FriendsPage } from './components/Friends';
 import { FriendsBar } from './components/FriendsBar';
 import { GoalsPage } from './components/Goals';
 import { Login } from './components/Login';
@@ -685,6 +685,19 @@ function AppShell() {
                 🇺🇸 English
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* signed-in account with no username yet → claiming one is mandatory
+          (friends can only add each other by unique name) */}
+      {signedIn && !showFirstRun && social.state !== null && !social.state.me && (
+        <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
+            <Mascot mood="happy" size={72} />
+            <h2 className="mt-3 text-lg font-extrabold text-text">{t('fr.claim.title')}</h2>
+            <p className="mt-1 text-xs font-medium text-text-dim">{t('fr.claim.body')}</p>
+            <ClaimUsernameForm onClaimed={social.refresh} />
           </div>
         </div>
       )}
