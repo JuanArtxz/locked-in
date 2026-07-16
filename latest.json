@@ -1,10 +1,10 @@
 {
-    "version":  "0.11.0",
-    "pub_date":  "2026-07-16T03:30:16Z",
+    "version":  "0.11.1",
+    "pub_date":  "2026-07-16T03:36:31Z",
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSM3hTOHVTbDg2VS9pKzJFcjdUSEpybWFCKzNOOTAwYlRrN2loNlhhajV0TWtURWxaOWIwNXl6bUwwdDdpNXZHVWVoWVExNEF6VWVlL2laV1d2SWlIK1ZNcXlqMy9OUlFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0MTcyNjEyCWZpbGU6TG9ja2VkIEluXzAuMTEuMF94NjQtc2V0dXAuZXhlCjVSZWFKSXhLUmVNczdrWTZSRW9wYjVNb1YrVGhYWlRPWWxPNEg4ZEU0dWVMdGZmV201ZVhaL1J5ZUdmK1FPQXQyUzhTYkx6RTVyMXFTWmdNaTVsZkRnPT0K",
-                                             "url":  "https://github.com/juannastaken/locked-in/releases/download/v0.11.0/Locked.In_0.11.0_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSM3hTOHVTbDg2VXhZZjBSMVc1WnpOMWp1NWVIMmN2VFJNTG5XdHBweUFrbS9xeUVQRnNHZTdjM09kY2YraHhoV0d5QXN0S3dOVHRGZlQveFAwc0ZlWVVpdG9IZlFHVWdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0MTcyOTg3CWZpbGU6TG9ja2VkIEluXzAuMTEuMV94NjQtc2V0dXAuZXhlClVHT0tIUkhMalY3VXRoMTErODQwbVFjc2RoY2RLVndBb1AxclpnV3BvSzhVNmxRVGVvbHZSaklQckIyb0hxVDlOemlrdDFBaVVFQjltUGZOdjg3M0RnPT0K",
+                                             "url":  "https://github.com/juannastaken/locked-in/releases/download/v0.11.1/Locked.In_0.11.1_x64-setup.exe"
                                          }
                   }
 }
