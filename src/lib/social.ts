@@ -53,6 +53,10 @@ export interface PresenceRow {
   total_sec: number;
   /** JSON usernames of everyone in this user's current jam, null when solo */
   jam_members: string | null;
+  /** current WORK app in focus (only published with the auto-tracker on) */
+  fg_app: string | null;
+  /** JSON {bd: bestDaySec, bs: bestSessionSec} — profile records grid */
+  records: string | null;
 }
 
 /** A presence row older than this is treated as offline (app closed/crashed). */
@@ -251,6 +255,10 @@ export interface PublishPresenceInput {
   totalSec: number;
   /** usernames in my current jam (null when solo) */
   jamMembers: string[] | null;
+  /** current foreground work app (auto-tracker opt-in), null = private */
+  fgApp: string | null;
+  /** serialized personal records or null */
+  records: string | null;
 }
 
 export async function publishPresence(p: PublishPresenceInput): Promise<void> {
@@ -269,6 +277,8 @@ export async function publishPresence(p: PublishPresenceInput): Promise<void> {
     total_sec: Math.max(0, Math.floor(p.totalSec)),
     jam_members:
       p.jamMembers && p.jamMembers.length > 1 ? JSON.stringify(p.jamMembers) : null,
+    fg_app: p.fgApp,
+    records: p.records,
   });
 }
 

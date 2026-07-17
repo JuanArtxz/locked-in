@@ -921,6 +921,22 @@ const dict: Record<string, { pt: string; en: string }> = {
   'msg.voice.rec': { pt: 'gravar áudio (máx 15s)', en: 'record voice (max 15s)' },
   'msg.voice.toobig': { pt: 'áudio grande demais', en: 'voice note too big' },
   'msg.voice.nomic': { pt: 'microfone indisponível', en: 'microphone unavailable' },
+  'grp.photo.set': { pt: 'mudar foto do grupo', en: 'change group photo' },
+  'grp.invite.copy': { pt: 'copiar link de convite', en: 'copy invite link' },
+  'grp.invite.copied': { pt: 'link copiado ✓', en: 'link copied ✓' },
+  'grp.join.link': { pt: 'entrar com link', en: 'join with link' },
+  'grp.join.title': { pt: 'Entrar num grupo', en: 'Join a group' },
+  'grp.join.body': {
+    pt: 'cola o link de convite que te mandaram',
+    en: 'paste the invite link you were sent',
+  },
+  'grp.join.cta': { pt: 'ENTRAR', en: 'JOIN' },
+  'grp.join.invalid': {
+    pt: 'convite inválido ou grupo cheio',
+    en: 'invalid invite or the group is full',
+  },
+  'grp.mention': { pt: '@{0} te mencionou em "{1}"', en: '@{0} mentioned you in "{1}"' },
+  'grp.mention.title': { pt: 'menção', en: 'mention' },
   'fr.jams.on': { pt: 'JAMs on', en: 'JAMs on' },
   'fr.jams.off': { pt: 'JAMs off', en: 'JAMs off' },
   'fr.jams.tip': {

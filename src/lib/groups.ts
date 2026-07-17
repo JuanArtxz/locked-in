@@ -20,6 +20,10 @@ export interface GroupRow {
   jam_pomo: string | null;
   /** collective weekly goal in hours (null = off) */
   week_goal_hours: number | null;
+  /** group photo (small jpeg data-url) */
+  avatar_b64: string | null;
+  /** join-by-link code, generated on first share */
+  invite_code: string | null;
   created_at: string;
 }
 
@@ -390,5 +394,61 @@ export function subscribeGroups(onChange: () => void): () => void {
     .subscribe();
   return () => {
     supabase.removeChannel(channel).catch(() => {});
+  };
+}
+
+/** Group photo (small jpeg data-url) — admins only via the update grant+policy. */
+export async function setGroupAvatar(groupId: number, b64: string | null): Promise<string | null> {
+  if (b64 && b64.length > 200_000) return 'image too large';
+  const { error } = await supabase.from('groups').update({ avatar_b64: b64 }).eq('id', groupId);
+  return error ? error.message : null;
+}
+
+/** Returns the group invite code, creating one on first use. */
+export async function ensureInviteCode(groupId: number): Promise<string | null> {
+  const { data } = await supabase
+    .from('groups')
+    .select('invite_code')
+    .eq('id', groupId)
+    .maybeSingle();
+  const cur = (data as { invite_code: string | null } | null)?.invite_code;
+  if (cur) return cur;
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(9)))
+    .map((b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31])
+    .join('');
+  const { error } = await supabase
+    .from('groups')
+    .update({ invite_code: code })
+    .eq('id', groupId);
+  return error ? null : code;
+}
+
+/** Joins a group by invite code (server enforces the 5-member cap). */
+export async function redeemInvite(code: string): Promise<number | string> {
+  const clean = code.trim().replace(/^lockedin:group\//i, '');
+  if (!clean) return 'invalid';
+  const { data, error } = await supabase.rpc('redeem_group_invite', { code: clean });
+  if (error) return error.message;
+  return data as number;
+}
+
+/** Realtime group messages (mentions, live chat refresh). */
+export function subscribeGroupMessages(
+  onRow: (row: { group_id: number; sender: string; kind: string; body: string }) => void,
+): () => void {
+  const chan = supabase
+    .channel('gmsg-watch')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'group_messages' },
+      (payload) => {
+        if (payload.new) {
+          onRow(payload.new as { group_id: number; sender: string; kind: string; body: string });
+        }
+      },
+    )
+    .subscribe();
+  return () => {
+    supabase.removeChannel(chan).catch(() => {});
   };
 }

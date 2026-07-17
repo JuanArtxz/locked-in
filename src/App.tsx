@@ -360,6 +360,16 @@ function AppShell() {
           );
         }
         const life = await db.getLifetimeStats().catch(() => ({ totalSec: 0 }));
+        // rich presence: the work app in focus — ONLY with the auto-tracker on
+        let fgApp: string | null = null;
+        if (focusing && settingsRef.current?.autotrack_enabled) {
+          const fg = await invoke<string | null>('get_foreground_app').catch(() => null);
+          if (fg) fgApp = fg.replace(/\.exe$/i, '');
+        }
+        const rec = await db
+          .getRecords()
+          .then((r) => JSON.stringify({ bd: r.bestDaySec, bs: r.bestSessionSec }))
+          .catch(() => null);
         if (cancelled) return;
         await socialLib.publishPresence({
           focusing,
@@ -372,6 +382,8 @@ function AppShell() {
           // a jam is 2+ people — solo focusing (or a group jam nobody joined
           // yet) must not read as "in a jam" to friends
           jamMembers: focusing && jamMembers && jamMembers.length >= 2 ? jamMembers : null,
+          fgApp,
+          records: rec,
         });
       } catch {
         // offline — the next beat wins
@@ -1147,6 +1159,27 @@ function AppShell() {
     }, 30_000);
     return () => window.clearInterval(iv);
   }, []);
+
+  // ---- @mentions in group chats → toast + native notice ----
+  const groupsListRef = useRef(groups.list);
+  groupsListRef.current = groups.list;
+  useEffect(() => {
+    if (!signedIn) return;
+    return groupsLib.subscribeGroupMessages((row) => {
+      const meName = myUsernameRef.current;
+      const meId = socialStateRef.current?.me?.user_id;
+      if (!meName || !meId || row.sender === meId || row.kind !== 'text') return;
+      if (!row.body.toLowerCase().includes(`@${meName.toLowerCase()}`)) return;
+      const g = groupsListRef.current.find((x) => x.group.id === row.group_id);
+      if (!g) return; // not my group — RLS wouldn't deliver it anyway
+      const who = g.members.find((m) => m.user_id === row.sender)?.username ?? '?';
+      const msg = t('grp.mention', cleanProfanity(who), cleanProfanity(g.group.name));
+      pushToast(msg, 'info');
+      invoke('show_notice', { title: t('grp.mention.title'), body: msg, mood: 'hyped' }).catch(
+        () => {},
+      );
+    });
+  }, [signedIn, pushToast]);
 
   // ---- pokes: 👉 nudges + 🔥 cheers from friends (server rate-limited) ----
   useEffect(() => {

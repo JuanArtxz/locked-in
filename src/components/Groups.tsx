@@ -201,6 +201,22 @@ export function GroupView({
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
 
+  // @mention highlight — my own name glows in group messages
+  const myName = members.find((mm) => mm.user_id === myUserId)?.username ?? '';
+  const renderBody = (body: string) => {
+    if (!myName || !body.toLowerCase().includes(`@${myName.toLowerCase()}`)) return body;
+    const parts = body.split(new RegExp(`(@${myName})`, 'ig'));
+    return parts.map((p, i) =>
+      p.toLowerCase() === `@${myName.toLowerCase()}` ? (
+        <mark key={i} className="rounded bg-accent/30 px-0.5 font-bold text-text">
+          {p}
+        </mark>
+      ) : (
+        p
+      ),
+    );
+  };
+
   // a member counts as in the jam only if in_jam AND presence says they're
   // FOCUSING now (or it's me). The flag alone desyncs on force-close (stale
   // presence) and on stop-with-app-open (fresh presence, focusing=false) —
@@ -242,6 +258,45 @@ export function GroupView({
     setEditingGoal(false);
     const err = await groups.setWeekGoal(group.id, hours);
     if (err) onError(err);
+  }
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  function uploadGroupAvatar(file: File) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = async () => {
+      URL.revokeObjectURL(url);
+      const S = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = S;
+      canvas.height = S;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      // center-crop square
+      const side = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
+      const err = await groups.setGroupAvatar(group.id, canvas.toDataURL('image/jpeg', 0.8));
+      if (err) onError(err);
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  }
+
+  async function copyInvite() {
+    const code = await groups.ensureInviteCode(group.id);
+    if (!code) {
+      onError(t('fr.err.generic'));
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(`lockedin:group/${code}`);
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 3000);
+    } catch {
+      onError(t('img.copy.fail'));
+    }
   }
 
   async function leaveJam() {
@@ -513,7 +568,7 @@ export function GroupView({
                         : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
                     }`}
                   >
-                    {m.body}
+                    {renderBody(m.body)}
                     <span
                       className={`ml-2 align-baseline font-mono text-[11px] tabular-nums ${
                         m.mine ? 'text-bg/60' : 'text-text-faint'
@@ -676,6 +731,46 @@ export function GroupView({
               >
                 ✕
               </button>
+            </div>
+
+            {/* group identity: photo (admins upload) + invite link */}
+            <div className="flex items-center gap-3 border-b border-border p-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-border-strong bg-bg text-base font-extrabold uppercase text-text-dim">
+                {group.avatar_b64 ? (
+                  <img src={group.avatar_b64} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  cleanProfanity(group.name).slice(0, 2)
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                {meAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="block w-full truncate rounded-lg border border-border px-2.5 py-1.5 text-left text-[11px] font-bold text-text-dim hover:border-accent hover:text-text"
+                  >
+                    {t('grp.photo.set')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={copyInvite}
+                  className="block w-full truncate rounded-lg border border-border px-2.5 py-1.5 text-left text-[11px] font-bold text-accent hover:border-accent"
+                >
+                  {inviteCopied ? t('grp.invite.copied') : t('grp.invite.copy')}
+                </button>
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (f) uploadGroupAvatar(f);
+                }}
+              />
             </div>
 
             <div className="scrollbar-none min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">

@@ -293,8 +293,10 @@ export function statusLineFor(
         // fall through to the plain line
       }
     }
-    // display-side filter: the task text came from someone else's client
-    return `${t('fr.focusing', formatDurationShort(sec))}${row?.task ? ` · ${cleanProfanity(row.task)}` : ''}`;
+    // display-side filter: the task text came from someone else's client.
+    // fg_app = rich presence ("no VS Code") when their auto-tracker is on
+    const app = row?.fg_app ? ` · ${cleanProfanity(row.fg_app)}` : '';
+    return `${t('fr.focusing', formatDurationShort(sec))}${row?.task ? ` · ${cleanProfanity(row.task)}` : ''}${app}`;
   }
   // not focusing → their hand-written status (filtered) beats the plain label
   if (customStatus) return `“${cleanProfanity(customStatus)}”`;
@@ -470,6 +472,37 @@ function FriendProfile({
             </button>
           )}
         </div>
+
+        {/* personal records grid — published alongside presence */}
+        {(() => {
+          if (!row?.records) return null;
+          try {
+            const r = JSON.parse(row.records) as { bd?: number; bs?: number };
+            if (!r.bd && !r.bs) return null;
+            return (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="chunk p-3 text-center">
+                  <div className="font-mono text-xl font-bold tabular-nums text-text">
+                    {formatDurationShort(r.bd ?? 0)}
+                  </div>
+                  <div className="mt-0.5 text-[10px] font-extrabold uppercase tracking-wide text-text-faint">
+                    {t('status.card.bestday')}
+                  </div>
+                </div>
+                <div className="chunk p-3 text-center">
+                  <div className="font-mono text-xl font-bold tabular-nums text-text">
+                    {formatDurationShort(r.bs ?? 0)}
+                  </div>
+                  <div className="mt-0.5 text-[10px] font-extrabold uppercase tracking-wide text-text-faint">
+                    {t('status.card.bestsession')}
+                  </div>
+                </div>
+              </div>
+            );
+          } catch {
+            return null;
+          }
+        })()}
 
         {/* badges from their lifetime focus — click one for details */}
         {row && unlockedBadges(row.total_sec ?? 0).length > 0 && (
@@ -657,6 +690,28 @@ export function FriendsPage({
     null,
   );
   const [confirmUnfriend, setConfirmUnfriend] = useState<FriendEntry | null>(null);
+  const [joinLinkOpen, setJoinLinkOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [joiningGroup, setJoiningGroup] = useState(false);
+
+  async function joinByLink() {
+    const code = joinCode.trim();
+    if (!code) return;
+    setJoiningGroup(true);
+    try {
+      const r = await import('../lib/groups').then((g) => g.redeemInvite(code));
+      if (typeof r === 'number') {
+        setJoinLinkOpen(false);
+        setJoinCode('');
+        groupsHook.refresh();
+        window.setTimeout(() => openGroup(r), 600);
+      } else {
+        onError(/invalid|full/i.test(r) ? t('grp.join.invalid') : r);
+      }
+    } finally {
+      setJoiningGroup(false);
+    }
+  }
   const [groupOpen, setGroupOpen] = useState<number | null>(null); // group id
   const [creatingGroup, setCreatingGroup] = useState(false);
 
@@ -1145,15 +1200,24 @@ export function FriendsPage({
             <span className="text-[10px] font-extrabold uppercase tracking-wide text-text-dim">
               {t('grp.title')} ({groupsHook.list.length})
             </span>
-            {state.friends.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setCreatingGroup(true)}
-                className="text-[11px] font-bold text-accent hover:underline"
+                onClick={() => setJoinLinkOpen(true)}
+                className="text-[11px] font-bold text-text-dim hover:text-text hover:underline"
               >
-                + {t('grp.new')}
+                {t('grp.join.link')}
               </button>
-            )}
+              {state.friends.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCreatingGroup(true)}
+                  className="text-[11px] font-bold text-accent hover:underline"
+                >
+                  + {t('grp.new')}
+                </button>
+              )}
+            </div>
           </div>
           {groupsHook.list.map((g) => {
             // headphones only when the jam is genuinely live (someone focusing),
@@ -1174,20 +1238,26 @@ export function FriendsPage({
                   groupOpen === g.group.id ? 'bg-surface-hover' : 'hover:bg-surface-hover'
                 }`}
               >
-                <div className="flex -space-x-2">
-                  {g.members.slice(0, 3).map((m) => (
-                    <div
-                      key={m.user_id}
-                      className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-bg bg-surface text-[9px] font-extrabold uppercase text-text-dim"
-                    >
-                      {m.avatar ? (
-                        <img src={m.avatar} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        m.username.slice(0, 2)
-                      )}
-                    </div>
-                  ))}
-                </div>
+                {g.group.avatar_b64 ? (
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-border-strong">
+                    <img src={g.group.avatar_b64} alt="" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex -space-x-2">
+                    {g.members.slice(0, 3).map((m) => (
+                      <div
+                        key={m.user_id}
+                        className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-bg bg-surface text-[9px] font-extrabold uppercase text-text-dim"
+                      >
+                        {m.avatar ? (
+                          <img src={m.avatar} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          m.username.slice(0, 2)
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-bold text-text">
                     {cleanProfanity(g.group.name)}
@@ -1335,6 +1405,42 @@ export function FriendsPage({
           </div>
         </div>,
         document.body,
+      )}
+
+      {/* join group by invite link/code */}
+      {joinLinkOpen && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          onMouseDown={(e) => e.target === e.currentTarget && setJoinLinkOpen(false)}
+        >
+          <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
+            <h2 className="text-lg font-extrabold text-text">{t('grp.join.title')}</h2>
+            <p className="mt-1 text-xs font-medium text-text-dim">{t('grp.join.body')}</p>
+            <input
+              autoFocus
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && joinByLink()}
+              placeholder="lockedin:group/…"
+              className="chunk-input mt-4 w-full px-4 py-3 text-center font-mono text-sm text-text placeholder:text-text-faint"
+            />
+            <button
+              type="button"
+              disabled={joiningGroup || !joinCode.trim()}
+              onClick={joinByLink}
+              className="chunk-btn chunk-btn-accent mt-4 w-full py-3 text-sm"
+            >
+              {joiningGroup ? '…' : t('grp.join.cta')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setJoinLinkOpen(false)}
+              className="mt-2 text-xs font-bold text-text-faint hover:text-text"
+            >
+              {t('misc.cancel')}
+            </button>
+          </div>
+        </div>
       )}
 
       {confirmUnfriend && (
