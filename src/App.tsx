@@ -849,9 +849,27 @@ function AppShell() {
           try {
             if (row.kind === 'image') preview = `📷 ${t('msg.kind.image')}`;
             else if (row.kind === 'jam') preview = `🎧 ${t('msg.kind.jam')}`;
+            else if (row.kind === 'voice') preview = `🎤 ${t('msg.kind.voice')}`;
             else {
               const txt = await e2e.decryptRow(row, false);
-              if (txt) preview = txt.length > 90 ? `${txt.slice(0, 90)}…` : txt;
+              if (txt) {
+                if (row.kind === 'status') {
+                  // body = JSON {s: status snippet, t: reply text} — never show raw
+                  let replyTxt = '';
+                  try {
+                    replyTxt = String(JSON.parse(txt).t ?? '');
+                  } catch {
+                    /* malformed — generic label below */
+                  }
+                  preview = replyTxt
+                    ? `${t('msg.kind.status')}: ${replyTxt.slice(0, 70)}`
+                    : t('msg.kind.status');
+                } else if (/^\[sticker:\w+\]$/.test(txt)) {
+                  preview = t('attach.sticker');
+                } else {
+                  preview = txt.length > 90 ? `${txt.slice(0, 90)}…` : txt;
+                }
+              }
             }
           } catch {
             // undecryptable (key not restored yet) — keep the generic line
