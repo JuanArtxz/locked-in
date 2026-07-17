@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { t } from '../lib/i18n';
 import type { SocialHook } from '../hooks/useSocial';
-import { HeadphonesIcon, PointIcon } from './Icons';
 
 export interface TabDef {
   id: string;
@@ -30,42 +29,6 @@ export function PersonIcon({ size = 18 }: { size?: number }) {
       <circle cx="12" cy="8.2" r="4.2" />
       <path d="M12 14.4c-4.8 0-8.2 2.6-8.2 6.1V22h16.4v-1.5c0-3.5-3.4-6.1-8.2-6.1z" />
     </svg>
-  );
-}
-
-/** Labeled on/off gate (jam invites / pokes) living beside the gear. */
-function GateSquare({
-  storageKey,
-  label,
-  tip,
-  icon,
-}: {
-  storageKey: string;
-  label: string;
-  tip: string;
-  icon: ReactNode;
-}) {
-  const [blocked, setBlocked] = useState(() => localStorage.getItem(storageKey) === '1');
-  return (
-    <button
-      type="button"
-      title={tip}
-      onClick={() => {
-        const next = !blocked;
-        localStorage.setItem(storageKey, next ? '1' : '0');
-        setBlocked(next);
-      }}
-      className={`ml-1.5 flex h-10 items-center gap-1.5 rounded-xl border-2 px-3 text-[11px] font-extrabold uppercase tracking-wide transition-colors ${
-        blocked
-          ? 'border-danger/50 text-danger hover:bg-danger/10'
-          : 'border-border text-accent hover:border-accent/60 hover:bg-accent-dim'
-      }`}
-    >
-      {icon}
-      <span>
-        {label} {blocked ? 'OFF' : 'ON'}
-      </span>
-    </button>
   );
 }
 
@@ -156,23 +119,6 @@ export function Titlebar({
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
-        {/* jam/poke gates — square, next to the gear (moved out of Friends) */}
-        {signedIn && (
-          <>
-            <GateSquare
-              storageKey="jams-blocked"
-              label="JAM"
-              tip={t('fr.jams.tip')}
-              icon={<HeadphonesIcon size={14} />}
-            />
-            <GateSquare
-              storageKey="pokes-blocked"
-              label={t('poke.cta').toUpperCase()}
-              tip={t('poke.gate.tip')}
-              icon={<PointIcon size={14} />}
-            />
-          </>
-        )}
       </div>
 
       {/* center: bare text nav, active shown by a bar ON TOP */}

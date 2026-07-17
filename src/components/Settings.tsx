@@ -583,6 +583,15 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
           </Field>
         </Section>
 
+        <Section title={t('set.social')}>
+          <Field label={t('set.gate.jams')} hint={t('fr.jams.tip')}>
+            <GateToggle storageKey="jams-blocked" />
+          </Field>
+          <Field label={t('set.gate.pokes')} hint={t('poke.gate.tip')}>
+            <GateToggle storageKey="pokes-blocked" />
+          </Field>
+        </Section>
+
         <Section title={t('set.system')}>
           <Field label={t('set.autostart')} hint={t('set.autostart.hint')}>
             <Toggle
@@ -721,6 +730,20 @@ function Stepper({
         +
       </button>
     </div>
+  );
+}
+
+/** localStorage-backed allow/block gate — toggle ON means the feature is allowed. */
+function GateToggle({ storageKey }: { storageKey: string }) {
+  const [blocked, setBlocked] = useState(() => localStorage.getItem(storageKey) === '1');
+  return (
+    <Toggle
+      checked={!blocked}
+      onChange={(allowed) => {
+        localStorage.setItem(storageKey, allowed ? '0' : '1');
+        setBlocked(!allowed);
+      }}
+    />
   );
 }
 

@@ -923,6 +923,9 @@ const dict: Record<string, { pt: string; en: string }> = {
     pt: 'o microfone salvo sumiu — tenta de novo com o padrão',
     en: 'saved microphone is gone — try again with the default',
   },
+  'set.social': { pt: 'Social', en: 'Social' },
+  'set.gate.jams': { pt: 'Receber convites de JAM', en: 'Receive JAM invites' },
+  'set.gate.pokes': { pt: 'Receber cutucadas e fogos', en: 'Receive pokes and cheers' },
   'set.audio': { pt: 'Áudio', en: 'Audio' },
   'set.audio.devices': { pt: 'Dispositivos de áudio', en: 'Audio devices' },
   'set.audio.hint': {
