@@ -141,7 +141,7 @@ function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
   const shown = playing || cur > 0 ? cur : dur;
 
   return (
-    <div className={`flex items-center gap-2.5 ${mine ? 'text-bg' : 'text-text'}`}>
+    <div className={`flex max-w-full items-center gap-2 ${mine ? 'text-bg' : 'text-text'}`}>
       <audio
         ref={audioRef}
         src={src}
@@ -179,7 +179,7 @@ function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
       </button>
       <div
         ref={barRef}
-        className="flex h-9 w-40 cursor-pointer items-center gap-[2px]"
+        className="flex h-9 w-32 min-w-0 shrink cursor-pointer items-center gap-[2px]"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           seek(e.clientX);
@@ -199,7 +199,7 @@ function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
           />
         ))}
       </div>
-      <span className="w-9 shrink-0 text-right font-mono text-[11px] tabular-nums opacity-80">
+      <span className="w-8 shrink-0 text-right font-mono text-[11px] tabular-nums opacity-80">
         {fmtVoiceSec(shown)}
       </span>
       <button
