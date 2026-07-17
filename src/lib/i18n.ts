@@ -97,6 +97,10 @@ const dict: Record<string, { pt: string; en: string }> = {
     pt: '@{0} já tá numa JAM — a JAM de amigos é só pra dois',
     en: '@{0} is already in a JAM — friend JAMs are two people only',
   },
+  'jam.leavefirst': {
+    pt: 'sai da JAM atual antes de começar a JAM do grupo',
+    en: 'leave your current JAM before starting the group JAM',
+  },
   'jam.late': {
     pt: '@{0} aceitou tarde — tua JAM já tá cheia (1:1)',
     en: '@{0} accepted late — your JAM is already full (1:1)',

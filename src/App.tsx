@@ -285,6 +285,18 @@ function AppShell() {
       // seen-live-first: don't prune someone we've never observed focusing yet
       // (their presence may not have loaded right after they joined)
       if (socialLib.isLive(row)) {
+        // live but publishing a roster that EXCLUDES me → they moved on to a
+        // different jam (e.g. a group) — this jam is over for them
+        if (row?.jam_members && meKey) {
+          try {
+            const theirs = JSON.parse(row.jam_members) as string[];
+            if (theirs.length >= 2 && !theirs.some((x) => x.toLowerCase() === meKey)) {
+              return false;
+            }
+          } catch {
+            // unreadable — treat as still with me
+          }
+        }
         jamSeenRef.current.add(k);
         return true;
       }
@@ -720,6 +732,7 @@ function AppShell() {
     onJoinApproved: (invite, hostUsername) => {
       // my join request got a yes — hop into the host's jam right now
       const me = myUsernameRef.current ?? 'me';
+      if (activeGroupJamRef.current !== null) return; // group jam wins
       if (focusRef.current.jam && focusRef.current.jam.members.length >= 2) return; // already paired
       if (focusRef.current.phase === 'idle') {
         focusRef.current.startSession(invite.task, null, {
@@ -747,9 +760,9 @@ function AppShell() {
         setTab('home');
       } else {
         // friend jams are strictly 1:1 — a late accept after the seat filled
-        // (race with cancelSent) is refused instead of spawning a trio
+        // (race with cancelSent) or after I moved into a GROUP jam is refused
         const cur = focusRef.current.jam;
-        if (cur && cur.members.length >= 2) {
+        if (activeGroupJamRef.current !== null || (cur && cur.members.length >= 2)) {
           pushToast(t('jam.late', guestUsername), 'info');
           return;
         }
@@ -767,6 +780,8 @@ function AppShell() {
 
   // outgoing invites die the moment they can't be honored anymore: my 1:1
   // seat filled, or my session ended — kills the "late accept ghost jam"
+  const jamCancelRef = useRef<() => void>(() => {});
+  jamCancelRef.current = jam.cancelSent;
   useEffect(() => {
     if (focus.phase === 'idle' || (focus.jam && focus.jam.members.length >= 2)) {
       jam.cancelSent();
@@ -888,8 +903,11 @@ function AppShell() {
         return;
       }
       // friend jams are strictly TWO people — for more, make a group.
-      // Me already paired → no new invites/requests.
-      if (focusRef.current.jam && focusRef.current.jam.members.length >= 2) {
+      // Me already paired OR inside a group jam (even alone) → no 1:1 flows.
+      if (
+        activeGroupJamRef.current !== null ||
+        (focusRef.current.jam && focusRef.current.jam.members.length >= 2)
+      ) {
         pushToast(t('jam.selfbusy'), 'info');
         return;
       }
@@ -1274,6 +1292,17 @@ function AppShell() {
   const startGroupJam = useCallback(
     (groupId: number, task: string, pomo: string | null = null) => {
       const me = myUsernameRef.current ?? 'me';
+      // converting a running 1:1 jam into a group jam would splice the 1:1
+      // partner into the group roster — leave the 1:1 first
+      if (
+        activeGroupJamRef.current === null &&
+        focusRef.current.jam &&
+        focusRef.current.jam.members.length >= 2
+      ) {
+        pushToast(t('jam.leavefirst'), 'info');
+        return;
+      }
+      jamCancelRef.current(); // pending 1:1 invites die on entering a group jam
       if (focusRef.current.phase !== 'idle') {
         // already focusing → convert my running session into the group jam so
         // Focus/overlay reflect it and syncJamMembers (which needs a jam) fills
@@ -1297,6 +1326,7 @@ function AppShell() {
   const joinGroupJam = useCallback(
     (groupId: number, task: string, startedAtIso: string, pomo: string | null = null) => {
       const me = myUsernameRef.current ?? 'me';
+      jamCancelRef.current(); // no 1:1 invite may survive into a group jam
       if (focusRef.current.phase !== 'idle') {
         onError(t('jam.busy'));
         // membership was optimistically set by the caller — roll it back
@@ -1330,8 +1360,12 @@ function AppShell() {
     if (!p || !accept) return;
     const me = myUsernameRef.current ?? 'me';
     if (p.kind === 'invite') {
-      // I was called into their jam — join with the shared clock
-      if (focusRef.current.jam && focusRef.current.jam.members.length >= 2) {
+      // I was called into their jam — join with the shared clock. Group jam
+      // (even solo, waiting for people) blocks 1:1 — the rosters would fight.
+      if (
+        activeGroupJamRef.current !== null ||
+        (focusRef.current.jam && focusRef.current.jam.members.length >= 2)
+      ) {
         pushToast(t('jam.selfbusy'), 'info');
         return;
       }
