@@ -1362,6 +1362,37 @@ pub fn run() {
         }
       });
 
+      // auto-allow microphone for voice notes: answer the WebView2 permission
+      // request natively so the raw "tauri.localhost wants to..." prompt never
+      // shows (and a previously clicked "Block" can't wedge the feature)
+      #[cfg(windows)]
+      {
+        use webview2_com::PermissionRequestedEventHandler;
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+          COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+          COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+        };
+        let _ = window.with_webview(|webview| unsafe {
+          let core = match webview.controller().CoreWebView2() {
+            Ok(c) => c,
+            Err(_) => return,
+          };
+          let mut token: i64 = 0;
+          let handler = PermissionRequestedEventHandler::create(Box::new(|_, args| {
+            if let Some(args) = args {
+              let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+              if args.PermissionKind(&mut kind).is_ok()
+                && kind == COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
+              {
+                let _ = args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW);
+              }
+            }
+            Ok(())
+          }));
+          let _ = core.add_PermissionRequested(&handler, &mut token);
+        });
+      }
+
       Ok(())
     })
     .run(tauri::generate_context!())

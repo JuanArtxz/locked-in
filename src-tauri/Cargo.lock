@@ -113,6 +113,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-sql",
  "tauri-plugin-updater",
+ "webview2-com",
  "windows",
  "winreg 0.56.0",
 ]
