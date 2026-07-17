@@ -75,9 +75,12 @@ export async function sendMessage(
 ): Promise<SendResult> {
   const user = await currentUser();
   if (!user) return 'error';
-  // images travel as data-urls — profanity filter/char cap apply to text only
+  // images/voice travel as data-urls — profanity filter/char cap apply to text
+  // only (slicing a data-url corrupts the payload; the filter can mangle base64)
   const body =
-    kind === 'image' ? plaintext : cleanProfanity(plaintext).slice(0, MESSAGE_MAX_CHARS);
+    kind === 'image' || kind === 'voice'
+      ? plaintext
+      : cleanProfanity(plaintext).slice(0, MESSAGE_MAX_CHARS);
   const theirPub = await fetchFriendPub(recipientId);
   if (!theirPub) return 'friend-no-key';
   const env = await e2e.encryptTo(body, theirPub);
