@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../hooks/useToast';
 import * as chat from '../lib/chat';
 import { cleanProfanity } from '../lib/filter';
@@ -28,6 +28,192 @@ import {
 // last decrypted state per conversation — switching chats paints INSTANTLY
 // from here (no skeleton, no double blink) while a silent refetch runs
 const convoCache = new Map<string, DecryptedMessage[]>();
+
+// only one voice note plays at a time (WhatsApp behavior)
+let activeVoiceEl: HTMLAudioElement | null = null;
+
+function fmtVoiceSec(s: number) {
+  if (!Number.isFinite(s) || s < 0) s = 0;
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+}
+
+const VOICE_BARS = 28;
+const VOICE_RATES = [1, 1.5, 2];
+
+function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [dur, setDur] = useState(0);
+  const [cur, setCur] = useState(0);
+  const [rate, setRate] = useState(1);
+
+  // deterministic pseudo-waveform seeded by the payload — stable per message
+  const bars = useMemo(() => {
+    let h = 2166136261;
+    for (let i = 40; i < Math.min(src.length, 4000); i += 13) {
+      h = Math.imul(h ^ src.charCodeAt(i), 16777619);
+    }
+    return Array.from({ length: VOICE_BARS }, (_, i) => {
+      h = Math.imul(h ^ (i + 1), 16777619);
+      return 0.25 + (((h >>> 8) % 1000) / 1000) * 0.75;
+    });
+  }, [src]);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      const el = audioRef.current;
+      if (el) {
+        el.pause();
+        if (activeVoiceEl === el) activeVoiceEl = null;
+      }
+    },
+    [],
+  );
+
+  const tick = useCallback(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    setCur(el.currentTime);
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const onMeta = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (Number.isFinite(el.duration) && el.duration > 0) {
+      setDur(el.duration);
+    } else {
+      // MediaRecorder webm carries no duration header — force Chromium to
+      // compute it by seeking past the end, then rewind
+      const fix = () => {
+        if (Number.isFinite(el.duration) && el.duration > 0) {
+          setDur(el.duration);
+          el.currentTime = 0;
+          setCur(0);
+          el.removeEventListener('durationchange', fix);
+        }
+      };
+      el.addEventListener('durationchange', fix);
+      el.currentTime = 1e7;
+    }
+  };
+
+  const toggle = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) {
+      if (activeVoiceEl && activeVoiceEl !== el) activeVoiceEl.pause();
+      activeVoiceEl = el;
+      const out = localStorage.getItem('audio-output-id');
+      if (out && 'setSinkId' in el) {
+        (el as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> })
+          .setSinkId(out)
+          .catch(() => {});
+      }
+      el.playbackRate = rate;
+      el.play().catch(() => {});
+    } else {
+      el.pause();
+    }
+  };
+
+  const seek = (clientX: number) => {
+    const el = audioRef.current;
+    const bar = barRef.current;
+    if (!el || !bar || !dur) return;
+    const rect = bar.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    el.currentTime = frac * dur;
+    setCur(el.currentTime);
+  };
+
+  const cycleRate = () => {
+    const next = VOICE_RATES[(VOICE_RATES.indexOf(rate) + 1) % VOICE_RATES.length];
+    setRate(next);
+    const el = audioRef.current;
+    if (el) el.playbackRate = next;
+  };
+
+  const progress = dur > 0 ? cur / dur : 0;
+  const shown = playing || cur > 0 ? cur : dur;
+
+  return (
+    <div className={`flex items-center gap-2.5 ${mine ? 'text-bg' : 'text-text'}`}>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={onMeta}
+        onPlay={() => {
+          setPlaying(true);
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          rafRef.current = requestAnimationFrame(tick);
+        }}
+        onPause={() => {
+          setPlaying(false);
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          const el = audioRef.current;
+          if (el) setCur(el.ended ? 0 : el.currentTime);
+        }}
+      />
+      <button
+        type="button"
+        onClick={toggle}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105 ${
+          mine ? 'bg-bg/20' : 'bg-accent text-bg'
+        }`}
+      >
+        {playing ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <rect x="5" y="4" width="5" height="16" rx="1.5" />
+            <rect x="14" y="4" width="5" height="16" rx="1.5" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M7 4.8v14.4c0 .9 1 1.5 1.8 1L20.4 13c.8-.5.8-1.6 0-2L8.8 3.8c-.8-.5-1.8.1-1.8 1z" />
+          </svg>
+        )}
+      </button>
+      <div
+        ref={barRef}
+        className="flex h-9 w-40 cursor-pointer items-center gap-[2px]"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          seek(e.clientX);
+        }}
+        onPointerMove={(e) => {
+          if (e.buttons === 1) seek(e.clientX);
+        }}
+      >
+        {bars.map((h, i) => (
+          <span
+            key={i}
+            className="w-[3px] flex-1 rounded-full bg-current transition-opacity"
+            style={{
+              height: `${Math.round(h * 26)}px`,
+              opacity: (i + 0.5) / VOICE_BARS <= progress ? 1 : 0.35,
+            }}
+          />
+        ))}
+      </div>
+      <span className="w-9 shrink-0 text-right font-mono text-[11px] tabular-nums opacity-80">
+        {fmtVoiceSec(shown)}
+      </span>
+      <button
+        type="button"
+        onClick={cycleRate}
+        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ${
+          mine ? 'bg-bg/20' : 'bg-surface-hover'
+        }`}
+      >
+        {rate}×
+      </button>
+    </div>
+  );
+}
 
 const REACTION_SET = ['👍', '❤️', '😂', '🔥', '👀'];
 const STICKER_MOODS: MascotMood[] = ['happy', 'hyped', 'focus', 'relax', 'sleep', 'sad', 'angry'];
@@ -870,19 +1056,7 @@ export function ChatView({
                       style={m.mine && theme ? { backgroundColor: theme } : undefined}
                     >
                       {m.text ? (
-                        <audio
-                          src={m.text}
-                          controls
-                          className="h-9 w-60"
-                          ref={(el) => {
-                            const out = localStorage.getItem('audio-output-id');
-                            if (el && out && 'setSinkId' in el) {
-                              (el as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> })
-                                .setSinkId(out)
-                                .catch(() => {});
-                            }
-                          }}
-                        />
+                        <VoicePlayer src={m.text} mine={m.mine} />
                       ) : (
                         <span className="px-2 py-1 text-xs italic text-text-faint">
                           🔒 {t('msg.undecryptable')}
