@@ -320,6 +320,7 @@ function AppShell() {
     afkSec: focus.pendingAfkSec ?? 0,
     jamMembers: focus.jam?.members ?? null,
   };
+  const beatNowRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (!signedIn) return;
     let cancelled = false;
@@ -362,6 +363,7 @@ function AppShell() {
         // offline — the next beat wins
       }
     };
+    beatNowRef.current = beat;
     beat();
     const iv = window.setInterval(beat, 60_000);
     return () => {
@@ -369,6 +371,12 @@ function AppShell() {
       window.clearInterval(iv);
     };
   }, [signedIn, focus.phase]);
+
+  // roster changes (someone left/joined my jam) publish IMMEDIATELY — waiting
+  // for the next 60s tick left friends seeing a stale "in JAM with X" line
+  useEffect(() => {
+    beatNowRef.current();
+  }, [focus.jam]);
 
   // tray menu follows the language
   useEffect(() => {
@@ -1249,6 +1257,18 @@ function AppShell() {
       }
     }
   }, [focus.jam, pushToast]);
+
+  // ---- group weekly goal: while focusing INSIDE this group's jam, tick my
+  // per-group clock every minute (server trigger clamps to real time) ----
+  useEffect(() => {
+    if (activeGroupJamId === null) return;
+    const iv = window.setInterval(() => {
+      if (focusRef.current.phase === 'focusing') {
+        groupsLib.bumpGroupJamTime(activeGroupJamId, 60).catch(() => {});
+      }
+    }, 60_000);
+    return () => window.clearInterval(iv);
+  }, [activeGroupJamId]);
 
   // ---- group jam: shares the focus session + the shared display timer ----
   const startGroupJam = useCallback(

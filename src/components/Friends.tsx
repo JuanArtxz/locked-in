@@ -1518,10 +1518,6 @@ export function FriendsPage({
               myUserId={me.user_id}
               friends={state.friends}
               isLive={(uid) => social.isLive(soc.presence.get(uid))}
-              weekSecOf={(uid) => {
-                const row = soc.presence.get(uid);
-                return row && row.week_key === wk ? row.week_sec : 0;
-              }}
               refetchKey={groupsHook.tick}
               onError={onError}
               onBack={() => setGroupOpen(null)}

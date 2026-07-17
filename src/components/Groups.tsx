@@ -5,6 +5,7 @@ import { cleanProfanity } from '../lib/filter';
 import { dateLocale, t } from '../lib/i18n';
 import { formatDurationShort } from '../lib/time';
 import type { FriendEntry } from '../lib/social';
+import { weekKey } from '../lib/social';
 import { DotsIcon, HeadphonesIcon, SendIcon, TargetIcon } from './Icons';
 import { DaySeparator } from './Chat';
 import { ConfirmModal } from './Confirm';
@@ -143,8 +144,6 @@ interface GroupViewProps {
   friends: FriendEntry[];
   /** presence lookup for live dots, jam liveness + shared-timer base */
   isLive: (userId: string) => boolean;
-  /** this week's published seconds for a member (0 when unknown/stale) */
-  weekSecOf: (userId: string) => number;
   refetchKey: number;
   onError: (m: string) => void;
   onBack: () => void;
@@ -160,7 +159,6 @@ export function GroupView({
   myUserId,
   friends,
   isLive,
-  weekSecOf,
   refetchKey,
   onError,
   onBack,
@@ -410,7 +408,13 @@ export function GroupView({
         <div className="shrink-0 border-b border-border px-4 py-2">
           {group.week_goal_hours ? (
             (() => {
-              const doneSec = members.reduce((acc, m) => acc + weekSecOf(m.user_id), 0);
+              // ONLY time focused inside THIS group's jam counts — personal
+              // solo hours stay out of the group goal
+              const wkNow = weekKey();
+              const doneSec = members.reduce(
+                (acc, m) => acc + (m.week_key === wkNow ? (m.week_jam_sec ?? 0) : 0),
+                0,
+              );
               const goalSec = group.week_goal_hours * 3600;
               const frac = Math.min(1, doneSec / goalSec);
               return (

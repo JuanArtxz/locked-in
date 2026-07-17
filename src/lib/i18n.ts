@@ -295,8 +295,8 @@ const dict: Record<string, { pt: string; en: string }> = {
     en: 'You leave "{0}". Only an admin can bring you back.',
   },
   'grp.goal.modal.body': {
-    pt: 'horas somadas de todo mundo do grupo nesta semana',
-    en: "everyone's combined hours this week",
+    pt: 'só conta o tempo focado DENTRO da JAM deste grupo, somado de todo mundo',
+    en: "only time focused INSIDE this group's JAM counts, summed across everyone",
   },
   'grp.rename': { pt: 'renomear', en: 'rename' },
   'grp.leave': { pt: 'Sair do grupo', en: 'Leave group' },

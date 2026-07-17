@@ -692,6 +692,49 @@ begin
 exception when duplicate_object then null;
 end $$;
 
+-- ========== group weekly goal counts ONLY time spent in the GROUP's jam ==========
+-- each member accumulates their own clock while focusing inside this group's
+-- jam; the goal bar sums these instead of everyone's generic weekly hours
+alter table public.group_members add column if not exists week_jam_sec bigint not null default 0;
+alter table public.group_members add column if not exists week_key text;
+alter table public.group_members add column if not exists jam_beat_at timestamptz;
+revoke update on public.group_members from authenticated;
+grant update (in_jam, is_admin, week_jam_sec, week_key) on public.group_members to authenticated;
+
+-- same anti-cheat shape as presence: your jam clock can only grow as fast as
+-- real time, only on YOUR row, and jam_beat_at is server-stamped
+create or replace function public.group_time_guard()
+returns trigger language plpgsql as $$
+declare gap double precision;
+begin
+  if new.week_jam_sec is distinct from old.week_jam_sec
+     or new.week_key is distinct from old.week_key then
+    if new.user_id <> auth.uid() then
+      new.week_jam_sec := old.week_jam_sec;
+      new.week_key := old.week_key;
+      return new;
+    end if;
+    if new.week_key is distinct from old.week_key then
+      if new.week_jam_sec > 21600 then
+        new.week_jam_sec := 0;
+      end if;
+    else
+      gap := greatest(
+        extract(epoch from (now() - coalesce(old.jam_beat_at, now() - interval '75 seconds'))),
+        0
+      );
+      if new.week_jam_sec > old.week_jam_sec + gap + 5 then
+        new.week_jam_sec := (old.week_jam_sec + gap + 5)::bigint;
+      end if;
+    end if;
+    new.jam_beat_at := now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists group_time_guard_t on public.group_members;
+create trigger group_time_guard_t before update on public.group_members
+  for each row execute function public.group_time_guard();
+
 -- ---------- anti-abuse hardening ----------
 
 -- one pending jam invite per pair (kills invite flooding at the source);

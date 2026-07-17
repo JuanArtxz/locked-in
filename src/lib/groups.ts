@@ -6,6 +6,7 @@
 
 import { currentUser, supabase } from './cloud';
 import { cleanProfanity } from './filter';
+import { weekKey } from './social';
 
 export const GROUP_MAX = 5;
 
@@ -27,6 +28,9 @@ export interface GroupMember {
   user_id: string;
   is_admin: boolean;
   in_jam: boolean;
+  /** seconds this member focused INSIDE this group's jam this week */
+  week_jam_sec: number;
+  week_key: string | null;
   username: string;
   avatar: string | null;
 }
@@ -47,7 +51,15 @@ export interface GroupMessage {
   senderName: string;
 }
 
-async function attachProfiles(rows: { user_id: string; is_admin: boolean; in_jam: boolean }[]) {
+async function attachProfiles(
+  rows: {
+    user_id: string;
+    is_admin: boolean;
+    in_jam: boolean;
+    week_jam_sec: number;
+    week_key: string | null;
+  }[],
+) {
   const ids = rows.map((r) => r.user_id);
   const names = new Map<string, { username: string; avatar: string | null }>();
   if (ids.length > 0) {
@@ -78,7 +90,10 @@ export async function listMyGroups(): Promise<GroupSummary[]> {
 
   const [{ data: groups }, { data: members }] = await Promise.all([
     supabase.from('groups').select('*').in('id', ids),
-    supabase.from('group_members').select('group_id, user_id, is_admin, in_jam').in('group_id', ids),
+    supabase
+      .from('group_members')
+      .select('group_id, user_id, is_admin, in_jam, week_jam_sec, week_key')
+      .in('group_id', ids),
   ]);
 
   const memberRows = (members ?? []) as {
@@ -86,9 +101,17 @@ export async function listMyGroups(): Promise<GroupSummary[]> {
     user_id: string;
     is_admin: boolean;
     in_jam: boolean;
+    week_jam_sec: number;
+    week_key: string | null;
   }[];
   const withProfiles = await attachProfiles(
-    memberRows.map((m) => ({ user_id: m.user_id, is_admin: m.is_admin, in_jam: m.in_jam })),
+    memberRows.map((m) => ({
+      user_id: m.user_id,
+      is_admin: m.is_admin,
+      in_jam: m.in_jam,
+      week_jam_sec: m.week_jam_sec ?? 0,
+      week_key: m.week_key ?? null,
+    })),
   );
   // re-key by group (attachProfiles zeroed group_id)
   const byGroup = new Map<number, GroupMember[]>();
@@ -211,6 +234,27 @@ export async function startGroupJam(
   if (error) return error.message;
   await setJamMembership(groupId, true);
   return null;
+}
+
+/** Adds a minute of focused-in-THIS-group's-jam time to my own member row.
+ *  Server trigger clamps growth to real elapsed time (anti-cheat). */
+export async function bumpGroupJamTime(groupId: number, deltaSec: number): Promise<void> {
+  const user = await currentUser();
+  if (!user) return;
+  const { data } = await supabase
+    .from('group_members')
+    .select('week_jam_sec, week_key')
+    .eq('group_id', groupId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  const wk = weekKey();
+  const row = data as { week_jam_sec: number; week_key: string | null } | null;
+  const cur = row && row.week_key === wk ? (row.week_jam_sec ?? 0) : 0;
+  await supabase
+    .from('group_members')
+    .update({ week_jam_sec: cur + deltaSec, week_key: wk })
+    .eq('group_id', groupId)
+    .eq('user_id', user.id);
 }
 
 /** Admin sets (or clears) the group's collective weekly goal in hours. */
