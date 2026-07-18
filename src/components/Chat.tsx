@@ -468,7 +468,13 @@ function JamCard({
   inJam: boolean;
   onJoin: () => void;
 }) {
-  const joinable = !m.mine && friendLive && !inJam;
+  // an invite only lives as long as the SESSION that sent it: if the friend's
+  // current session started after the message, this card is history — without
+  // this check a 4am invite kept "reactivating" every time the friend focused
+  const sessionStartMs = Date.now() - friendFocusSec * 1000;
+  const fromThisSession =
+    friendLive && new Date(m.created_at).getTime() >= sessionStartMs - 60_000;
+  const joinable = !m.mine && friendLive && !inJam && fromThisSession;
   return (
     <div className="bubble-shadow w-72 overflow-hidden rounded-2xl border-2 border-border-strong bg-surface">
       <div className="flex items-center gap-2 border-b border-border bg-accent-dim px-3.5 py-2">
@@ -504,7 +510,7 @@ function JamCard({
             ? t('jamcard.sent')
             : inJam
               ? t('jamcard.already')
-              : friendLive
+              : joinable
                 ? t('jamcard.join')
                 : t('jamcard.over')}
         </button>
