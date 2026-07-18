@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { parsePomo } from '../hooks/useFocusSession';
 import type { UseFocusSession } from '../hooks/useFocusSession';
@@ -71,6 +71,23 @@ export function Home({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
+
+  // minimal mode: video-player reveal — UI shows while the mouse moves and
+  // fades 2s after it stops (plain :hover never hides, a parked cursor
+  // anywhere in the window counts as hovering)
+  const [minimalUi, setMinimalUi] = useState(false);
+  const minimalHideRef = useRef<number | null>(null);
+  const pokeMinimalUi = useCallback(() => {
+    setMinimalUi(true);
+    if (minimalHideRef.current) window.clearTimeout(minimalHideRef.current);
+    minimalHideRef.current = window.setTimeout(() => setMinimalUi(false), 2000);
+  }, []);
+  useEffect(
+    () => () => {
+      if (minimalHideRef.current) window.clearTimeout(minimalHideRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     // projects ARE the goals — a project exists by creating it in Goals, so
@@ -148,20 +165,23 @@ export function Home({
     const minimal = settings?.focus_minimal === true;
     const styleDef =
       CLOCK_STYLES.find((s) => s.id === (settings?.clock_style || 'classic')) ?? CLOCK_STYLES[0];
-    // minimal mode: only the timer stays visible — everything else fades in on hover
+    // minimal mode: only the timer stays visible — everything else fades back
+    // in while the mouse is moving and disappears 2s after it stops
     const ghost = minimal
-      ? 'opacity-0 transition-opacity duration-150 group-hover/focus:opacity-100'
+      ? `transition-opacity duration-200 ${minimalUi ? 'opacity-100' : 'pointer-events-none opacity-0'}`
       : '';
-    const timerSize = minimal
-      ? 'text-[clamp(72px,16vw,190px)]'
-      : 'text-[clamp(52px,11vw,96px)]';
+    const timerSize = 'text-[clamp(52px,11vw,96px)]';
     const timerColor = paused
       ? 'text-text-faint'
       : styleDef.accent
         ? 'text-accent'
         : 'text-text';
     return (
-      <div className="group/focus relative flex h-full flex-col items-center justify-center gap-6 px-6">
+      <div
+        className="group/focus relative flex h-full flex-col items-center justify-center gap-6 px-6"
+        onMouseMove={minimal ? pokeMinimalUi : undefined}
+        onMouseLeave={minimal ? () => setMinimalUi(false) : undefined}
+      >
         {/* clock customizer — quiet corner button, revealed on hover */}
         <div className="absolute right-4 top-4 z-20" data-pop>
           <button
@@ -169,7 +189,13 @@ export function Home({
             title={t('home.clock.customize')}
             onClick={() => setClockOpen((o) => !o)}
             className={`flex h-8 w-8 items-center justify-center rounded-lg text-text-faint transition-opacity hover:bg-surface-hover hover:text-text ${
-              clockOpen ? 'opacity-100' : 'opacity-0 group-hover/focus:opacity-100'
+              clockOpen
+                ? 'opacity-100'
+                : minimal
+                  ? minimalUi
+                    ? 'opacity-100'
+                    : 'pointer-events-none opacity-0'
+                  : 'opacity-0 group-hover/focus:opacity-100'
             }`}
           >
             <PaletteIcon size={15} />
