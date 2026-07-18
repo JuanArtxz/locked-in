@@ -1953,7 +1953,7 @@ function AppShell() {
       {/* signed-in account with no username yet → claiming one is mandatory
           (friends can only add each other by unique name) */}
       {signedIn && !showFirstRun && social.state !== null && !social.state.me && (
-        <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
             <Mascot mood="happy" size={72} />
             <h2 className="mt-3 text-lg font-extrabold text-text">{t('fr.claim.title')}</h2>
@@ -1967,7 +1967,7 @@ function AppShell() {
           slim banner while a session runs (never interrupts focus) */}
       {updateForced && updateReady && !updating && (
         focus.phase === 'idle' ? (
-          <div className="animate-fade-in fixed inset-0 z-[59] flex items-center justify-center bg-black/85 backdrop-blur-sm">
+          <div className="animate-fade-in fixed inset-0 z-[59] flex items-center justify-center bg-black/85">
             <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
               <Mascot mood="sad" size={72} />
               <h2 className="mt-3 text-lg font-extrabold text-text">{t('up.forced')}</h2>
@@ -2022,7 +2022,7 @@ function AppShell() {
       )}
 
       {updating && (
-        <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm">
+        <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/85">
           <div className="animate-scale-in flex w-full max-w-sm flex-col items-center rounded-2xl border border-border bg-surface p-8 text-center shadow-2xl shadow-black/50">
             <Mascot mood="hyped" size={80} />
             <h2 className="mt-4 text-lg font-semibold tracking-tight text-text">
@@ -2046,7 +2046,7 @@ function AppShell() {
       )}
 
       {focus.recoveredSession && (
-        <div className="animate-fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div className="animate-fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="animate-scale-in w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-2xl shadow-black/50">
             <h2 className="mb-2 text-base font-semibold text-text">{t('misc.recovered.title')}</h2>
             <p className="mb-5 text-sm leading-relaxed text-text-dim">
@@ -2152,7 +2152,9 @@ function AppShell() {
       )}
 
       <div className="flex min-h-0 flex-1">
-      <main key={tab} className="animate-fade-up min-h-0 flex-1">
+      {/* no key= and no entrance animation: tab switches render instantly —
+          the remount-per-switch + fade-up combo read as "loading" every time */}
+      <main className="min-h-0 flex-1">
         {tab === 'home' && (
           <Home
             focus={focus}

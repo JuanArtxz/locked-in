@@ -373,7 +373,7 @@ export function legalText(doc: LegalDoc): string {
 export function LegalModal({ doc, onClose }: { doc: LegalDoc; onClose: () => void }) {
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="chunk animate-scale-in flex max-h-[85vh] w-full max-w-lg flex-col p-5">

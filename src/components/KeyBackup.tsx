@@ -69,7 +69,7 @@ export function KeyBackupModal({ mode, onClose, onRotated, onDone, onError }: Ke
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/85 px-6 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/85 px-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">

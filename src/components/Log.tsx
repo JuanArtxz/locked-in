@@ -259,7 +259,7 @@ export function Log({ onError, refreshKey }: LogProps) {
       <div className="mx-auto max-w-2xl space-y-7 px-4 pb-10 pt-4 sm:px-6 xl:max-w-3xl">
         {groups.map((group) => (
           <section key={group.date}>
-            <div className="sticky top-0 z-10 -mx-2 bg-bg/90 px-2 py-2.5 backdrop-blur">
+            <div className="sticky top-0 z-10 -mx-2 bg-bg/90 px-2 py-2.5">
               <div className="flex items-baseline justify-between">
                 <h2 className="text-[15px] font-semibold capitalize tracking-tight text-text">
                   {group.label}

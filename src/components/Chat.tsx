@@ -373,7 +373,7 @@ export function ImageViewer({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <img
@@ -1434,7 +1434,7 @@ export function ChatView({
 
       {micAsk && (
         <div
-          className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setMicAsk(false)}
         >
           <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">

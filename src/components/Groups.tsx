@@ -124,7 +124,7 @@ export function CreateGroupModal({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="chunk animate-scale-in w-full max-w-sm p-5">
@@ -657,7 +657,7 @@ export function GroupView({
 
   return (
     <div
-      className="animate-fade-in relative flex h-full min-h-0 flex-col"
+      className="relative flex h-full min-h-0 flex-col"
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) e.preventDefault();
       }}
@@ -1279,7 +1279,7 @@ export function GroupView({
 
       {micAsk && (
         <div
-          className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setMicAsk(false)}
         >
           <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
@@ -1488,7 +1488,7 @@ export function GroupView({
       {/* start-jam modal: what to focus on + who's aboard */}
       {startingJam && (
         <div
-          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setStartingJam(false)}
         >
           <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
@@ -1745,7 +1745,7 @@ export function GroupView({
       {/* add-member modal — real popup, big rows */}
       {showAdd && (
         <div
-          className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setShowAdd(false)}
         >
           <div className="chunk animate-scale-in flex max-h-[70vh] w-full max-w-sm flex-col p-5">
@@ -1788,7 +1788,7 @@ export function GroupView({
       {/* weekly goal modal — its own proper popup */}
       {editingGoal && (
         <div
-          className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setEditingGoal(false)}
         >
           <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">

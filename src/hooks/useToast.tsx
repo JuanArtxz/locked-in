@@ -39,7 +39,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`animate-fade-up pointer-events-auto flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm shadow-2xl shadow-black/40 backdrop-blur ${
+            className={`animate-fade-up pointer-events-auto flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm shadow-2xl shadow-black/40 ${
               t.tone === 'error'
                 ? 'border-danger/30 bg-surface text-text'
                 : 'border-border-strong bg-surface text-text'

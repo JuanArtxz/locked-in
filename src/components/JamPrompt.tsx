@@ -26,7 +26,7 @@ export function JamPromptOverlay({ prompt, canAccept, onAccept, onDecline }: Jam
   const isInvite = prompt.kind === 'invite';
 
   return (
-    <div className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/90 px-6 backdrop-blur-md">
+    <div className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/90 px-6">
       <div className="animate-scale-in flex w-full max-w-md flex-col items-center text-center">
         <span className="mb-5 animate-pulse text-xs font-extrabold uppercase tracking-[0.3em] text-accent">
           🎧 {t('jam.incoming')}

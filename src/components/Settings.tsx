@@ -731,7 +731,7 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
 
       {logoutOpen && (
         <div
-          className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setLogoutOpen(false)}
         >
           <div className="chunk animate-scale-in w-full max-w-sm p-5">
@@ -762,7 +762,7 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
 
       {deleteOpen && (
         <div
-          className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setDeleteOpen(false)}
         >
           <div className="chunk animate-scale-in w-full max-w-sm p-5">

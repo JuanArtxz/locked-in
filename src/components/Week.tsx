@@ -390,7 +390,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
           </div>
         )}
         {!loading && mode === 'month' && (
-          <div className="animate-fade-in flex h-full flex-col rounded-2xl border border-border bg-surface p-4">
+          <div className="flex h-full flex-col rounded-2xl border border-border bg-surface p-4">
             <div className="flex min-h-0 flex-1 items-end gap-[3px]">
               {rangeDays.map((day) => {
                 const sec = daySec(day);
@@ -430,7 +430,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
         )}
 
         {!loading && mode === 'week' && (
-        <div className="animate-fade-in h-full space-y-1.5 overflow-hidden rounded-2xl border border-border bg-surface p-4">
+        <div className="h-full space-y-1.5 overflow-hidden rounded-2xl border border-border bg-surface p-4">
           <div className="flex items-center gap-3 pb-1">
             <div className="w-9 shrink-0" />
             <div className="relative h-3 min-w-0 flex-1">

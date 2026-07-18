@@ -122,7 +122,7 @@ export function Home({
           ? 'happy'
           : 'focus';
     return (
-      <div className="animate-fade-up flex h-full flex-col items-center justify-center gap-6 px-6">
+      <div className="flex h-full flex-col items-center justify-center gap-6 px-6">
         {focus.isAbsurd && !paused && (
           <div className="animate-fade-in rounded-xl border border-warn/30 bg-warn-dim px-4 py-2 text-sm text-warn">
             {t('home.absurd')}
@@ -349,7 +349,7 @@ export function Home({
       : Math.max(0, Math.min(1, focus.breakRemainingSec / focus.activeBreak.plannedSec));
 
     return (
-      <div className="animate-fade-up flex h-full flex-col items-center justify-center gap-7">
+      <div className="flex h-full flex-col items-center justify-center gap-7">
         <span className="text-xs font-medium uppercase tracking-[0.15em] text-text-faint">
           {overdue ? t('home.break.over') : t('home.break.label')}
         </span>

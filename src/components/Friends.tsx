@@ -148,7 +148,7 @@ function JamDetailModal({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
@@ -1223,7 +1223,7 @@ export function FriendsPage({
       {/* full friends list modal */}
       {allFriendsOpen && (
         <div
-          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setAllFriendsOpen(false)}
         >
           <div className="chunk animate-scale-in flex max-h-[80vh] w-full max-w-md flex-col p-4">
@@ -1333,7 +1333,7 @@ export function FriendsPage({
       {/* join group by invite link/code */}
       {joinLinkOpen && (
         <div
-          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setJoinLinkOpen(false)}
         >
           <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
@@ -1538,7 +1538,7 @@ function ReportModal({
   const [detail, setDetail] = useState('');
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6"
       onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
     >
       <div className="chunk animate-scale-in w-full max-w-sm p-5">

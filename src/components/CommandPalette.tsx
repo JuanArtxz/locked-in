@@ -51,7 +51,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[70] flex items-start justify-center bg-black/60 px-6 pt-24 backdrop-blur-[2px]"
+      className="animate-fade-in fixed inset-0 z-[70] flex items-start justify-center bg-black/60 px-6 pt-24-[2px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="chunk animate-scale-in w-full max-w-md overflow-hidden p-0">

@@ -12,7 +12,7 @@ export function BadgeModal({ badge, unlocked, onClose }: BadgeModalProps) {
   const label = getLang() === 'en' ? badge.labelEn : badge.labelPt;
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/75 px-6 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/75 px-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="chunk animate-scale-in w-full max-w-xs p-6 text-center">

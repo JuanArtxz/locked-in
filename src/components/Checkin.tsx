@@ -201,7 +201,7 @@ export function CheckinPage({ settings, onError }: CheckinProps) {
         </div>
       </div>
 
-      <div className="border-t border-border bg-bg/80 backdrop-blur">
+      <div className="border-t border-border bg-bg/80">
         <div className="mx-auto w-full max-w-2xl px-4 py-3 sm:px-6 xl:max-w-3xl">
           <form
             onSubmit={(e) => {
