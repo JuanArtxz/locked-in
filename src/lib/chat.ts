@@ -35,6 +35,8 @@ export interface DecryptedMessage {
   /** emoji → users who reacted ('me' aware via mine flag on caller side) */
   reactions: { emoji: string; count: number; mine: boolean }[];
   created_at: string;
+  /** original storage marker when text was resolved from Storage media */
+  mediaMarker?: string;
 }
 
 /** Last message of each conversation, decrypted — the WhatsApp-style row line. */
@@ -189,30 +191,27 @@ export function subscribeReactions(onChange: () => void): () => void {
   };
 }
 
-// ---------- typing indicator (ephemeral broadcast, nothing stored) ----------
+// ---------- typing indicator (ephemeral, PRIVATE per-user inbox) ----------
+// Old model was one world-readable broadcast channel: any signed-in account
+// could watch who types to whom app-wide AND forge events. Now each user owns
+// a private topic "ubox:<uuid>" (RLS on realtime.messages): only the owner
+// can listen, only accepted friends/groupmates can send.
 
 export interface TypingChannel {
   sendTyping: () => void;
   close: () => void;
 }
 
-/** Joins the per-conversation typing channel; onTyping fires on peer keystrokes. */
-// single global typing channel: the open chat AND the friend list both listen,
-// so "typing…" can show on rows without one websocket channel per pair
+/** Send-only handle: pushes my keystrokes into the FRIEND's private inbox. */
 export function joinTyping(
   myId: string,
   otherId: string,
-  onTyping: () => void,
+  _onTyping?: () => void,
 ): TypingChannel {
-  const channel = supabase.channel('typing-g', {
-    config: { broadcast: { self: false } },
+  const channel = supabase.channel(`ubox:${otherId}`, {
+    config: { broadcast: { self: false }, private: true },
   });
-  channel
-    .on('broadcast', { event: 'typing' }, (p) => {
-      const pay = p.payload as { from?: string; to?: string } | undefined;
-      if (pay?.from === otherId && pay?.to === myId) onTyping();
-    })
-    .subscribe();
+  channel.subscribe();
   let last = 0;
   return {
     sendTyping: () => {
@@ -220,7 +219,7 @@ export function joinTyping(
       if (now - last < 1500) return; // throttle keystrokes
       last = now;
       channel
-        .send({ type: 'broadcast', event: 'typing', payload: { from: myId, to: otherId } })
+        .send({ type: 'broadcast', event: 'typing', payload: { from: myId } })
         .catch(() => {});
     },
     close: () => {
@@ -229,15 +228,15 @@ export function joinTyping(
   };
 }
 
-/** App-wide listener: fires with the friendId whenever anyone types TO me. */
+/** MY private inbox: fires with the friendId whenever a friend types to me. */
 export function subscribeTypingAll(myId: string, onTyping: (fromId: string) => void): () => void {
-  const channel = supabase.channel('typing-g', {
-    config: { broadcast: { self: false } },
+  const channel = supabase.channel(`ubox:${myId}`, {
+    config: { broadcast: { self: false }, private: true },
   });
   channel
     .on('broadcast', { event: 'typing' }, (p) => {
-      const pay = p.payload as { from?: string; to?: string } | undefined;
-      if (pay?.to === myId && pay.from) onTyping(pay.from);
+      const pay = p.payload as { from?: string } | undefined;
+      if (pay?.from) onTyping(pay.from);
     })
     .subscribe();
   return () => {

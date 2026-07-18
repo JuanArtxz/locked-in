@@ -7,13 +7,15 @@ import * as cloud from '../lib/cloud';
 import * as db from '../lib/db';
 import { dateLocale, t } from '../lib/i18n';
 import { todayKey } from '../lib/time';
+import { LegalModal } from './Legal';
+import type { LegalDoc } from './Legal';
 
 interface SettingsProps {
   settingsHook: UseSettings;
   onError: (message: string) => void;
 }
 
-const ACCENT_PRESETS = [
+export const ACCENT_PRESETS = [
   { color: '#d4ff3f', nameKey: 'set.accent.lime' },
   { color: '#ff8c42', nameKey: 'set.accent.orange' },
   { color: '#4da6ff', nameKey: 'set.accent.blue' },
@@ -178,10 +180,53 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
     }
   }
 
-  async function accLogout() {
-    await cloud.signOut();
-    setAccount(null);
-    pushToast(t('acc.loggedout'), 'info');
+  // logout = this device becomes a fresh guest. Final snapshot goes up first;
+  // if that fails we keep everything and tell the user (never wipe unsaved data).
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
+  async function doLogout() {
+    setLogoutBusy(true);
+    try {
+      const r = await cloud.logoutAndReset();
+      if (r.kind === 'sync-failed') {
+        pushToast(t('acc.logout.syncfail', r.message), 'error');
+        return;
+      }
+      window.location.reload();
+    } finally {
+      setLogoutBusy(false);
+    }
+  }
+
+  // ---- account deletion (LGPD/GDPR) — typed confirmation, irreversible ----
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteWord, setDeleteWord] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [legal, setLegal] = useState<LegalDoc | null>(null);
+
+  async function deleteAccount() {
+    if (deleteWord.trim().toUpperCase() !== t('acc.delete.word')) return;
+    setDeleteBusy(true);
+    try {
+      const { error } = await cloud.supabase.rpc('delete_my_account');
+      if (error) {
+        pushToast(t('acc.err', error.message), 'error');
+        return;
+      }
+      // server side is gone — this device goes back to a fresh guest, data
+      // belonged to the account that no longer exists
+      await cloud.signOut().catch(() => {});
+      await db.wipeAll().catch(() => {});
+      await invoke('save_canvas', { data: '' }).catch(() => {});
+      localStorage.removeItem('e2e-priv');
+      localStorage.removeItem('cloud-last-sync');
+      localStorage.removeItem('jams-blocked');
+      localStorage.removeItem('pokes-blocked');
+      localStorage.setItem('guest-mode', '1');
+      window.location.reload();
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   if (!settings) {
@@ -236,10 +281,26 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={accLogout}
+                  onClick={() => setLogoutOpen(true)}
                   className="chunk-btn px-4 py-2.5 text-[13px] text-text-dim"
                 >
                   {t('acc.logout')}
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                <div className="min-w-0">
+                  <div className="text-sm text-danger">{t('acc.delete')}</div>
+                  <div className="mt-0.5 text-xs text-text-faint">{t('acc.delete.hint')}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteWord('');
+                    setDeleteOpen(true);
+                  }}
+                  className="shrink-0 rounded-lg border border-danger/50 px-4 py-2 text-[13px] font-bold text-danger hover:bg-danger/10"
+                >
+                  {t('acc.delete.btn')}
                 </button>
               </div>
             </>
@@ -604,6 +665,12 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
               }}
             />
           </Field>
+          <Field label={t('set.telemetry')} hint={t('set.telemetry.hint')}>
+            <Toggle
+              checked={settings.telemetry_enabled}
+              onChange={(v) => update('telemetry_enabled', v)}
+            />
+          </Field>
         </Section>
 
         <Section title={t('set.data')}>
@@ -622,7 +689,99 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
             </button>
           </div>
         </Section>
+
+        <Section title={t('legal.section')}>
+          <div className="flex items-center gap-2 px-4 py-3.5">
+            <button
+              type="button"
+              onClick={() => setLegal('terms')}
+              className="chunk-btn flex-1 py-2.5 text-[13px] text-text"
+            >
+              {t('legal.terms')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegal('privacy')}
+              className="chunk-btn flex-1 py-2.5 text-[13px] text-text"
+            >
+              {t('legal.privacy')}
+            </button>
+          </div>
+        </Section>
       </div>
+
+      {legal && <LegalModal doc={legal} onClose={() => setLegal(null)} />}
+
+      {logoutOpen && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          onMouseDown={(e) => e.target === e.currentTarget && setLogoutOpen(false)}
+        >
+          <div className="chunk animate-scale-in w-full max-w-sm p-5">
+            <h2 className="text-base font-extrabold text-text">{t('acc.logout')}</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-text-dim">
+              {t('acc.logout.body')}
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setLogoutOpen(false)}
+                className="chunk-btn flex-1 py-2.5 text-[13px] text-text"
+              >
+                {t('misc.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={logoutBusy}
+                onClick={doLogout}
+                className="chunk-btn chunk-btn-accent flex-1 py-2.5 text-[13px]"
+              >
+                {logoutBusy ? '…' : t('acc.logout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteOpen && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          onMouseDown={(e) => e.target === e.currentTarget && setDeleteOpen(false)}
+        >
+          <div className="chunk animate-scale-in w-full max-w-sm p-5">
+            <h2 className="text-base font-extrabold text-danger">{t('acc.delete')}</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-text-dim">
+              {t('acc.delete.body')}
+            </p>
+            <p className="mt-3 text-[12px] font-bold text-text">
+              {t('acc.delete.type', t('acc.delete.word'))}
+            </p>
+            <input
+              value={deleteWord}
+              onChange={(e) => setDeleteWord(e.target.value)}
+              placeholder={t('acc.delete.word')}
+              className="chunk-input mt-2 w-full px-4 py-2.5 text-center text-sm font-extrabold uppercase tracking-widest text-danger placeholder:text-text-faint"
+            />
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(false)}
+                className="chunk-btn flex-1 py-2.5 text-[13px] text-text"
+              >
+                {t('misc.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy || deleteWord.trim().toUpperCase() !== t('acc.delete.word')}
+                onClick={deleteAccount}
+                className="flex-1 rounded-xl bg-danger py-2.5 text-[13px] font-extrabold text-white disabled:opacity-40"
+              >
+                {deleteBusy ? '…' : t('acc.delete.btn')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

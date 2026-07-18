@@ -16,8 +16,15 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
+  const recent = useRef(new Map<string, number>());
 
   const pushToast = useCallback((message: string, tone: ToastItem['tone'] = 'error') => {
+    // dedupe: identical message within 5s (concurrent queries failing together
+    // used to stack three copies of the same toast)
+    const now = Date.now();
+    const last = recent.current.get(message) ?? 0;
+    if (now - last < 5000) return;
+    recent.current.set(message, now);
     const id = nextId.current++;
     setToasts((prev) => [...prev, { id, message, tone }]);
     window.setTimeout(() => {

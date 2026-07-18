@@ -34,6 +34,30 @@ export async function currentUser(): Promise<{ id: string; email: string } | nul
   return { id: s.user.id, email: s.user.email ?? '' };
 }
 
+/**
+ * Proactively refreshes the access token. WebView2 freezes JS timers while the
+ * window is hidden/minimized, so the library's auto-refresh can miss a beat and
+ * queries briefly 401 with "JWT expired" — this is NOT a real logout. Call this
+ * on window focus / regaining connectivity to heal it silently.
+ */
+let refreshing: Promise<boolean> | null = null;
+export async function ensureFreshSession(): Promise<boolean> {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) return false;
+      const { error } = await supabase.auth.refreshSession();
+      return !error;
+    } catch {
+      return false;
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
+
 export type SignUpResult =
   | { kind: 'ok' }
   | { kind: 'exists' }
@@ -60,6 +84,32 @@ export async function signIn(email: string, password: string): Promise<string | 
 
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
+}
+
+export type LogoutResult = { kind: 'ok' } | { kind: 'sync-failed'; message: string };
+
+/**
+ * Signing out turns this device back into a fresh guest: the account's data
+ * lives in the cloud, not on the machine. Order matters — push a final
+ * snapshot FIRST and abort if it fails (never wipe data that isn't safely
+ * backed up), then sign out and wipe everything account-scoped. The caller
+ * reloads the window afterwards.
+ */
+export async function logoutAndReset(): Promise<LogoutResult> {
+  await ensureFreshSession(); // heal a WebView2-frozen token before the final push
+  const err = await uploadSnapshot();
+  if (err) return { kind: 'sync-failed', message: err };
+  await supabase.auth.signOut();
+  await db.wipeAll();
+  await invoke('save_canvas', { data: '' }).catch(() => {});
+  // account-scoped browser state — the E2E private key must never survive
+  // into another account's session on this machine
+  localStorage.removeItem('e2e-priv');
+  localStorage.removeItem('cloud-last-sync');
+  localStorage.removeItem('jams-blocked');
+  localStorage.removeItem('pokes-blocked');
+  localStorage.setItem('guest-mode', '1');
+  return { kind: 'ok' };
 }
 
 /** Uploads the full local state as this user's snapshot (last write wins). */

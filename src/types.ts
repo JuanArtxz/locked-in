@@ -93,6 +93,8 @@ export interface Settings {
   profile_projects_public: boolean;
   friends_bar_enabled: boolean;
   pomodoro_enabled: boolean;
+  /** opt-in crash reports — OFF by default, never message content */
+  telemetry_enabled: boolean;
 }
 
 /** One image pinned on the PureRef-style reference board. */

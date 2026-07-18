@@ -759,6 +759,7 @@ const SETTINGS_DEFAULTS: Settings = {
   profile_projects_public: false,
   friends_bar_enabled: true,
   pomodoro_enabled: false,
+  telemetry_enabled: false,
 };
 
 // ---------- reference board ----------
@@ -1116,6 +1117,21 @@ export async function importAll(snap: Snapshot): Promise<void> {
         [key, String(value)],
       );
     }
+  });
+}
+
+/**
+ * Full local reset (logout / account switch). User data belongs to the
+ * account, not the machine: everything dies except device-level prefs
+ * (language), so the next person at this install starts from zero.
+ */
+export async function wipeAll(): Promise<void> {
+  return run('wipeAll', async () => {
+    const dbi = await getDb();
+    for (const table of DELETE_ORDER) {
+      await dbi.execute(`DELETE FROM ${table}`);
+    }
+    await dbi.execute(`DELETE FROM settings WHERE key NOT IN ('language')`);
   });
 }
 

@@ -7,6 +7,8 @@ import { getLang, setLang, t } from '../lib/i18n';
 import type { Lang } from '../lib/i18n';
 import * as social from '../lib/social';
 import { Mascot } from './Mascot';
+import { LegalModal } from './Legal';
+import type { LegalDoc } from './Legal';
 
 /**
  * Zero-friction message-key cloud flow, run while the account password is
@@ -35,7 +37,7 @@ interface LoginProps {
   onDone: () => void;
 }
 
-type Screen = 'signin' | 'signup';
+type Screen = 'signin' | 'signup' | 'forgot' | 'verify';
 
 export function Login({ onDone }: LoginProps) {
   const [screen, setScreen] = useState<Screen>('signin');
@@ -43,12 +45,16 @@ export function Login({ onDone }: LoginProps) {
   const [username, setUsername] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ cloud: cloud.CloudSnapshot; localCount: number } | null>(
     null,
   );
   const [lang, setLangState] = useState<Lang>(getLang());
+  const [legal, setLegal] = useState<LegalDoc | null>(null);
 
   function pickLang(l: Lang) {
     setLang(l);
@@ -59,8 +65,103 @@ export function Login({ onDone }: LoginProps) {
   function switchTo(s: Screen) {
     setScreen(s);
     setError(null);
+    setInfo(null);
     setPass('');
     setPass2('');
+    setOtp('');
+    setOtpSent(false);
+  }
+
+  /** password reset: email an 8-digit code, then set the new password here */
+  async function sendResetCode() {
+    setError(null);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+      setError(t('login.bademail'));
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error: err } = await cloud.supabase.auth.resetPasswordForEmail(email.trim());
+      if (err) {
+        setError(t('acc.err', err.message));
+        return;
+      }
+      setOtpSent(true);
+      setInfo(t('login.reset.sent'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doResetPassword() {
+    setError(null);
+    if (otp.trim().length < 8) {
+      setError(t('login.otp.bad'));
+      return;
+    }
+    if (pass.length < 8) {
+      setError(t('login.badpass'));
+      return;
+    }
+    if (pass !== pass2) {
+      setError(t('login.mismatch'));
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error: vErr } = await cloud.supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: otp.trim(),
+        type: 'recovery',
+      });
+      if (vErr) {
+        setError(t('login.otp.wrong'));
+        return;
+      }
+      const { error: uErr } = await cloud.supabase.auth.updateUser({ password: pass });
+      if (uErr) {
+        setError(t('acc.err', uErr.message));
+        return;
+      }
+      // keep the zero-friction key backup in sync with the NEW password —
+      // otherwise the next fresh device can't auto-restore the message key
+      try {
+        if (await e2e.loadPrivateKey()) await e2e.backupKeyToCloud(pass);
+      } catch {
+        /* offline — manual backup path still exists in Profile */
+      }
+      await autoKeyFlow(pass);
+      await afterAuth();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** signup email verification (when "Confirm email" is on in Supabase) */
+  async function doVerifySignup() {
+    setError(null);
+    if (otp.trim().length < 8) {
+      setError(t('login.otp.bad'));
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error: vErr } = await cloud.supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: otp.trim(),
+        type: 'signup',
+      });
+      if (vErr) {
+        setError(t('login.otp.wrong'));
+        return;
+      }
+      const uname = username.trim().replace(/^@/, '');
+      if (uname) await social.claimUsername(uname).catch(() => {});
+      await autoKeyFlow(pass);
+      await afterAuth();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function afterAuth() {
@@ -139,6 +240,12 @@ export function Login({ onDone }: LoginProps) {
       // created — sign in to get a session, then reconcile
       const err = await cloud.signIn(email.trim(), pass);
       if (err) {
+        // "Confirm email" on: no session until the emailed code is entered
+        if (/confirm/i.test(err)) {
+          setScreen('verify');
+          setInfo(t('login.verify.sent'));
+          return;
+        }
         setError(t('acc.err', err));
         return;
       }
@@ -293,67 +400,181 @@ export function Login({ onDone }: LoginProps) {
 
         <div className="chunk animate-fade-up p-5">
           <div className="mb-3 text-center text-sm font-extrabold uppercase tracking-wide text-text">
-            {screen === 'signin' ? t('acc.signin') : t('acc.signup')}
+            {screen === 'signin'
+              ? t('acc.signin')
+              : screen === 'signup'
+                ? t('acc.signup')
+                : screen === 'forgot'
+                  ? t('login.forgot.title')
+                  : t('login.verify.title')}
           </div>
 
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="email"
-            autoComplete="off"
-            autoFocus
-            className="chunk-input w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
-          />
-          {screen === 'signup' && (
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder={t('login.username')}
-              autoComplete="off"
-              maxLength={21}
-              className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
-            />
-          )}
-          <input
-            type="password"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            placeholder={t('acc.pass.placeholder')}
-            autoComplete="new-password"
-            onKeyDown={(e) => e.key === 'Enter' && screen === 'signin' && doSignIn()}
-            className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
-          />
-          {screen === 'signup' && (
-            <input
-              type="password"
-              value={pass2}
-              onChange={(e) => setPass2(e.target.value)}
-              placeholder={t('login.confirm')}
-              autoComplete="new-password"
-              onKeyDown={(e) => e.key === 'Enter' && doSignUp()}
-              className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
-            />
-          )}
+          {screen === 'verify' ? (
+            <>
+              <p className="mb-3 text-center text-xs font-medium text-text-faint">
+                {t('login.verify.body', email.trim())}
+              </p>
+              <input
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                placeholder={t('login.otp.placeholder')}
+                autoComplete="off"
+                autoFocus
+                maxLength={8}
+                onKeyDown={(e) => e.key === 'Enter' && doVerifySignup()}
+                className="chunk-input w-full px-4 py-3 text-center font-mono text-lg font-bold tracking-[0.3em] text-text placeholder:font-medium placeholder:tracking-normal placeholder:text-text-faint"
+              />
+              {info && <div className="mt-3 text-center text-xs font-bold text-accent">{info}</div>}
+              {error && <div className="mt-3 text-center text-xs font-bold text-danger">{error}</div>}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={doVerifySignup}
+                className="chunk-btn chunk-btn-accent mt-4 w-full py-3.5 text-[15px]"
+              >
+                {busy ? '…' : t('login.verify.cta')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => switchTo('signin')}
+                className="chunk-btn mt-2.5 w-full py-3 text-sm text-text"
+              >
+                {t('misc.cancel')}
+              </button>
+            </>
+          ) : screen === 'forgot' ? (
+            <>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email"
+                autoComplete="off"
+                autoFocus
+                disabled={otpSent}
+                className="chunk-input w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint disabled:opacity-60"
+              />
+              {otpSent && (
+                <>
+                  <input
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder={t('login.otp.placeholder')}
+                    autoComplete="off"
+                    maxLength={8}
+                    className="chunk-input mt-2.5 w-full px-4 py-3 text-center font-mono text-lg font-bold tracking-[0.3em] text-text placeholder:font-medium placeholder:tracking-normal placeholder:text-text-faint"
+                  />
+                  <input
+                    type="password"
+                    value={pass}
+                    onChange={(e) => setPass(e.target.value)}
+                    placeholder={t('login.newpass')}
+                    autoComplete="new-password"
+                    className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+                  />
+                  <input
+                    type="password"
+                    value={pass2}
+                    onChange={(e) => setPass2(e.target.value)}
+                    placeholder={t('login.confirm')}
+                    autoComplete="new-password"
+                    onKeyDown={(e) => e.key === 'Enter' && doResetPassword()}
+                    className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+                  />
+                </>
+              )}
+              {info && <div className="mt-3 text-center text-xs font-bold text-accent">{info}</div>}
+              {error && <div className="mt-3 text-center text-xs font-bold text-danger">{error}</div>}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={otpSent ? doResetPassword : sendResetCode}
+                className="chunk-btn chunk-btn-accent mt-4 w-full py-3.5 text-[15px]"
+              >
+                {busy ? '…' : otpSent ? t('login.reset.cta') : t('login.reset.send')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => switchTo('signin')}
+                className="chunk-btn mt-2.5 w-full py-3 text-sm text-text"
+              >
+                {t('misc.cancel')}
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email"
+                autoComplete="off"
+                autoFocus
+                className="chunk-input w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+              />
+              {screen === 'signup' && (
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={t('login.username')}
+                  autoComplete="off"
+                  maxLength={21}
+                  className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+                />
+              )}
+              <input
+                type="password"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                placeholder={t('acc.pass.placeholder')}
+                autoComplete="new-password"
+                onKeyDown={(e) => e.key === 'Enter' && screen === 'signin' && doSignIn()}
+                className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+              />
+              {screen === 'signup' && (
+                <input
+                  type="password"
+                  value={pass2}
+                  onChange={(e) => setPass2(e.target.value)}
+                  placeholder={t('login.confirm')}
+                  autoComplete="new-password"
+                  onKeyDown={(e) => e.key === 'Enter' && doSignUp()}
+                  className="chunk-input mt-2.5 w-full px-4 py-3 text-[15px] font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+                />
+              )}
 
-          {error && <div className="mt-3 text-center text-xs font-bold text-danger">{error}</div>}
+              {error && <div className="mt-3 text-center text-xs font-bold text-danger">{error}</div>}
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={screen === 'signin' ? doSignIn : doSignUp}
-            className="chunk-btn chunk-btn-accent mt-4 w-full py-3.5 text-[15px]"
-          >
-            {busy ? '…' : screen === 'signin' ? t('acc.signin') : t('acc.signup')}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => switchTo(screen === 'signin' ? 'signup' : 'signin')}
-            className="chunk-btn mt-2.5 w-full py-3 text-sm text-text"
-          >
-            {screen === 'signin' ? t('login.newhere') : t('login.haveaccount')}
-          </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={screen === 'signin' ? doSignIn : doSignUp}
+                className="chunk-btn chunk-btn-accent mt-4 w-full py-3.5 text-[15px]"
+              >
+                {busy ? '…' : screen === 'signin' ? t('acc.signin') : t('acc.signup')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => switchTo(screen === 'signin' ? 'signup' : 'signin')}
+                className="chunk-btn mt-2.5 w-full py-3 text-sm text-text"
+              >
+                {screen === 'signin' ? t('login.newhere') : t('login.haveaccount')}
+              </button>
+              {screen === 'signin' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => switchTo('forgot')}
+                  className="mt-3 w-full text-center text-[12px] font-bold text-text-faint underline-offset-4 hover:text-text hover:underline"
+                >
+                  {t('login.forgot')}
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         <button
@@ -366,7 +587,26 @@ export function Login({ onDone }: LoginProps) {
         <p className="mt-2 text-center text-[11px] font-medium leading-relaxed text-text-faint">
           {t('login.guest.hint')}
         </p>
+        <p className="mt-3 text-center text-[10px] font-medium text-text-faint">
+          {t('legal.agree')}{' '}
+          <button
+            type="button"
+            onClick={() => setLegal('terms')}
+            className="font-bold underline underline-offset-2 hover:text-text"
+          >
+            {t('legal.terms')}
+          </button>{' '}
+          ·{' '}
+          <button
+            type="button"
+            onClick={() => setLegal('privacy')}
+            className="font-bold underline underline-offset-2 hover:text-text"
+          >
+            {t('legal.privacy')}
+          </button>
+        </p>
       </div>
+      {legal && <LegalModal doc={legal} onClose={() => setLegal(null)} />}
     </div>
   );
 }

@@ -209,14 +209,12 @@ export async function sendFriendRequest(username: string): Promise<AddResult> {
   const name = username.trim().replace(/^@/, '');
   if (!USERNAME_RE.test(name)) return 'notfound';
 
-  // exact match, case-insensitive (ilike with no wildcards)
-  const { data: prof } = await supabase
-    .from('profiles')
-    .select('user_id, username')
-    .ilike('username', name)
-    .maybeSingle();
+  // exact-username discovery via SECURITY DEFINER lookup — the profiles table
+  // itself is only directly readable for friends/groupmates, so nobody can
+  // scrape the whole user directory by bypassing the app
+  const { data: prof } = await supabase.rpc('lookup_profile', { name }).maybeSingle();
   if (!prof) return 'notfound';
-  const target = prof as Profile;
+  const target = prof as { user_id: string; username: string };
   if (target.user_id === user.id) return 'self';
 
   const { error } = await supabase
@@ -238,6 +236,62 @@ export async function acceptRequest(friendshipId: number): Promise<string | null
 /** Reject an incoming request, cancel an outgoing one, or unfriend. */
 export async function removeFriendship(friendshipId: number): Promise<string | null> {
   const { error } = await supabase.from('friendships').delete().eq('id', friendshipId);
+  return error ? error.message : null;
+}
+
+// ---------- block + report (moderation) ----------
+
+/** userIds I've blocked — used to hide them everywhere client-side too. */
+export async function fetchBlockedIds(): Promise<Set<string>> {
+  const { data } = await supabase.from('blocks').select('blocked');
+  return new Set(((data ?? []) as { blocked: string }[]).map((r) => r.blocked));
+}
+
+/**
+ * Blocks a user: severs contact both ways. Deletes any friendship (so we each
+ * vanish from the other's lists) then records the block, which the server uses
+ * to reject any future message / request / poke / jam invite between us.
+ */
+export async function blockUser(userId: string): Promise<string | null> {
+  const user = await currentUser();
+  if (!user) return 'not signed in';
+  await supabase
+    .from('friendships')
+    .delete()
+    .or(
+      `and(requester.eq.${user.id},addressee.eq.${userId}),and(requester.eq.${userId},addressee.eq.${user.id})`,
+    );
+  const { error } = await supabase
+    .from('blocks')
+    .upsert({ blocker: user.id, blocked: userId }, { onConflict: 'blocker,blocked' });
+  return error ? error.message : null;
+}
+
+export async function unblockUser(userId: string): Promise<string | null> {
+  const user = await currentUser();
+  if (!user) return 'not signed in';
+  const { error } = await supabase
+    .from('blocks')
+    .delete()
+    .eq('blocker', user.id)
+    .eq('blocked', userId);
+  return error ? error.message : null;
+}
+
+/** Files a report against a user (write-only; only staff read them). */
+export async function reportUser(
+  userId: string,
+  reason: string,
+  detail: string,
+): Promise<string | null> {
+  const user = await currentUser();
+  if (!user) return 'not signed in';
+  const { error } = await supabase.from('reports').insert({
+    reporter: user.id,
+    target: userId,
+    reason: reason.slice(0, 60),
+    detail: detail.trim().slice(0, 500) || null,
+  });
   return error ? error.message : null;
 }
 
@@ -580,17 +634,20 @@ export async function fetchProfilesByUsernames(
 ): Promise<Map<string, { username: string; avatar: string | null }>> {
   const map = new Map<string, { username: string; avatar: string | null }>();
   if (names.length === 0) return map;
-  const { data } = await supabase
-    .from('profiles')
-    .select('username, avatar_b64')
-    .in('username', names);
+  // definer lookup (capped) instead of a raw table scan — jam rosters can
+  // include people who aren't my friends, but the directory stays unscrapable
+  const { data } = await supabase.rpc('lookup_profiles', { names: names.slice(0, 30) });
   for (const p of (data ?? []) as { username: string; avatar_b64: string | null }[]) {
     map.set(p.username.toLowerCase(), { username: p.username, avatar: p.avatar_b64 });
   }
   return map;
 }
 
-// ---------- jam shame: ephemeral broadcast, no rows stored ----------
+// ---------- jam shame: ephemeral, PRIVATE per-user inbox ----------
+// Old model was a world-readable broadcast: anyone could watch every shame
+// event AND forge one. Now the slacker's own client reports itself straight
+// into each jam-mate's private inbox topic (RLS: only friends/groupmates can
+// write there, only the owner can listen).
 
 export interface ShamePayload {
   /** username of the slacker */
@@ -601,19 +658,40 @@ export interface ShamePayload {
   members: string[];
 }
 
-export function joinJamShame(onMsg: (p: ShamePayload) => void): {
-  send: (p: ShamePayload) => void;
+/** Listens on MY private inbox for shame events. */
+export function joinJamShame(
+  myUserId: string,
+  onMsg: (p: ShamePayload) => void,
+): {
+  sendTo: (recipientIds: string[], p: ShamePayload) => void;
   close: () => void;
 } {
-  const chan = supabase.channel('jam-shame');
+  const chan = supabase.channel(`ubox:${myUserId}`, {
+    config: { broadcast: { self: false }, private: true },
+  });
   chan
     .on('broadcast', { event: 'shame' }, (e) => {
       if (e.payload) onMsg(e.payload as ShamePayload);
     })
     .subscribe();
   return {
-    send: (p) => {
-      chan.send({ type: 'broadcast', event: 'shame', payload: p }).catch(() => {});
+    sendTo: (recipientIds, p) => {
+      for (const rid of recipientIds) {
+        if (rid === myUserId) continue;
+        const out = supabase.channel(`ubox:${rid}`, {
+          config: { broadcast: { self: false }, private: true },
+        });
+        out.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            out
+              .send({ type: 'broadcast', event: 'shame', payload: p })
+              .catch(() => {})
+              .finally(() => {
+                window.setTimeout(() => supabase.removeChannel(out).catch(() => {}), 2000);
+              });
+          }
+        });
+      }
     },
     close: () => {
       supabase.removeChannel(chan).catch(() => {});

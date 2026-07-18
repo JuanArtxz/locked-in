@@ -1,14 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as groups from '../lib/groups';
 import type { GroupMessage, GroupSummary } from '../lib/groups';
+import * as media from '../lib/media';
 import { cleanProfanity } from '../lib/filter';
 import { dateLocale, t } from '../lib/i18n';
 import { formatDurationShort } from '../lib/time';
 import type { FriendEntry } from '../lib/social';
 import { weekKey } from '../lib/social';
-import { DotsIcon, HeadphonesIcon, SendIcon, TargetIcon } from './Icons';
-import { DaySeparator } from './Chat';
+import {
+  DotsIcon,
+  HeadphonesIcon,
+  ImageIcon,
+  MicIcon,
+  ReplyIcon,
+  SendIcon,
+  SmileIcon,
+  TargetIcon,
+  TrashIcon,
+} from './Icons';
+import {
+  DaySeparator,
+  VoicePlayer,
+  fileToChatImage,
+  fmtVoiceSec,
+  isJumbo,
+  stickerMoodOf,
+  STICKER_MOODS,
+} from './Chat';
+import { Mascot } from './Mascot';
+import type { MascotMood } from './Mascot';
 import { ConfirmModal } from './Confirm';
+
+const GROUP_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮', '😢'];
+const GROUP_EMOJIS = [
+  '😀', '😂', '🥹', '😍', '😎', '🤔', '😴', '😭', '😤', '🥳',
+  '👍', '👎', '👏', '🙏', '💪', '🔥', '❤️', '💯', '✨', '🎉',
+  '👀', '🤝', '🫡', '☕', '🚀', '⚡', '🧠', '📚', '⏰', '🎯',
+];
 
 function timeLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
@@ -230,12 +258,152 @@ export function GroupView({
   const addable = friends.filter((f) => !members.some((m) => m.user_id === f.userId));
   const canAddMore = members.length < groups.GROUP_MAX;
 
+  // staged image + reply + voice recording (mirrors the DM composer)
+  const [pendingImg, setPendingImg] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<GroupMessage | null>(null);
+  const [reactFor, setReactFor] = useState<number | null>(null);
+  const [confirmDel, setConfirmDel] = useState<number | null>(null);
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recSec, setRecSec] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recTimerRef = useRef<number | null>(null);
+  const imgInputRef = useRef<HTMLInputElement>(null);
+
+  // click outside any [data-pop] closes the floating pickers
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.('[data-pop]')) return;
+      setReactFor(null);
+      setStickerOpen(false);
+      setEmojiOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
   async function send() {
+    if (pendingImg) {
+      const img = pendingImg;
+      setPendingImg(null);
+      const marker = await media.uploadEncrypted(img);
+      if (!marker) {
+        setPendingImg(img);
+        onError(t('msg.img.toobig'));
+        return;
+      }
+      const ei = await groups.sendGroupMessage(group.id, 'image', marker, replyTo?.id ?? null);
+      if (ei) {
+        setPendingImg(img);
+        onError(ei);
+        return;
+      }
+      setReplyTo(null);
+    }
     const text = draft.trim();
-    if (!text) return;
-    setDraft('');
-    const err = await groups.sendGroupMessage(group.id, text);
+    if (text) {
+      const reply = replyTo?.id ?? null;
+      setDraft('');
+      setReplyTo(null);
+      const err = await groups.sendGroupMessage(group.id, 'text', text, reply);
+      if (err) {
+        setDraft(text);
+        onError(err);
+      }
+    }
+    reload();
+  }
+
+  async function sendSticker(mood: MascotMood) {
+    setStickerOpen(false);
+    const err = await groups.sendGroupMessage(group.id, 'text', `[sticker:${mood}]`);
     if (err) onError(err);
+    reload();
+  }
+
+  async function stageImage(file: File | undefined) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const dataUrl = await fileToChatImage(file);
+    if (!dataUrl) {
+      onError(t('msg.img.toobig'));
+      return;
+    }
+    setPendingImg(dataUrl);
+  }
+
+  async function startRecording() {
+    try {
+      const inputId = localStorage.getItem('audio-input-id');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: inputId ? { deviceId: { exact: inputId } } : true,
+      });
+      let rec: MediaRecorder;
+      try {
+        rec = new MediaRecorder(stream, {
+          mimeType: 'audio/webm;codecs=opus',
+          audioBitsPerSecond: 16_000,
+        });
+      } catch {
+        rec = new MediaRecorder(stream, { audioBitsPerSecond: 16_000 });
+      }
+      recChunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) recChunksRef.current.push(e.data);
+      };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((tr) => tr.stop());
+        const blob = new Blob(recChunksRef.current, { type: 'audio/webm' });
+        const dataUrl = await new Promise<string>((res) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result));
+          fr.readAsDataURL(blob);
+        });
+        const marker = await media.uploadEncrypted(dataUrl);
+        if (!marker) {
+          onError(t('msg.voice.toobig'));
+          return;
+        }
+        const err = await groups.sendGroupMessage(group.id, 'voice', marker, null);
+        if (err) onError(err);
+        reload();
+      };
+      recorderRef.current = rec;
+      rec.start();
+      setRecording(true);
+      setRecSec(0);
+      recTimerRef.current = window.setInterval(() => {
+        setRecSec((s) => {
+          if (s + 1 >= 60) stopRecording();
+          return s + 1;
+        });
+      }, 1000);
+    } catch {
+      onError(t('msg.voice.nomic'));
+    }
+  }
+
+  function stopRecording() {
+    if (recTimerRef.current) {
+      window.clearInterval(recTimerRef.current);
+      recTimerRef.current = null;
+    }
+    setRecording(false);
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+    recorderRef.current = null;
+  }
+
+  async function react(id: number, emoji: string) {
+    setReactFor(null);
+    await groups.toggleGroupReaction(id, emoji).catch(() => {});
+    reload();
+  }
+
+  async function removeMsg(m: GroupMessage) {
+    setConfirmDel(null);
+    await groups.deleteGroupMessage(m.id);
+    if (m.mine && m.mediaMarker) media.deleteMedia(m.mediaMarker);
     reload();
   }
 
@@ -547,36 +715,166 @@ export function GroupView({
               </div>
             );
           }
+          const quoted = m.reply_to ? messages.find((x) => x.id === m.reply_to) : null;
           return (
             <div key={m.id}>
               {newDay && <DaySeparator iso={m.created_at} />}
               <div
-                className={`flex ${m.mine ? 'justify-end' : 'justify-start'} ${
+                className={`group/gmsg flex ${m.mine ? 'justify-end' : 'justify-start'} ${
                   firstOfGroup ? 'mt-4 animate-msg-in' : 'mt-1'
                 }`}
               >
-                <div className={`max-w-[80%] ${m.mine ? 'items-end' : 'items-start'}`}>
+                <div className={`relative max-w-[80%] ${m.mine ? 'items-end' : 'items-start'}`}>
                   {!m.mine && firstOfGroup && (
                     <div className="mb-0.5 ml-1 text-[10px] font-bold text-text-faint">
                       @{m.senderName}
                     </div>
                   )}
+                  {/* hover toolbar: react / reply / delete-own */}
                   <div
-                    className={`bubble-shadow rounded-2xl border-2 border-border-strong px-4 py-2.5 text-[15px] font-medium leading-relaxed ${
-                      m.mine
-                        ? `rounded-br-md bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'}`
-                        : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
+                    data-pop
+                    className={`absolute -top-3 z-10 hidden items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5 shadow-lg group-hover/gmsg:flex ${
+                      m.mine ? 'right-1' : 'left-1'
                     }`}
                   >
-                    {renderBody(m.body)}
-                    <span
-                      className={`ml-2 align-baseline font-mono text-[11px] tabular-nums ${
-                        m.mine ? 'text-bg/60' : 'text-text-faint'
+                    <button
+                      type="button"
+                      onClick={() => setReactFor(reactFor === m.id ? null : m.id)}
+                      className="rounded-md p-1 text-text-dim hover:bg-surface-hover hover:text-text"
+                    >
+                      <SmileIcon size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReplyTo(m)}
+                      className="rounded-md p-1 text-text-dim hover:bg-surface-hover hover:text-text"
+                    >
+                      <ReplyIcon size={13} />
+                    </button>
+                    {m.mine && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDel(m.id)}
+                        className="rounded-md p-1 text-text-dim hover:bg-danger/20 hover:text-danger"
+                      >
+                        <TrashIcon size={13} />
+                      </button>
+                    )}
+                  </div>
+                  {reactFor === m.id && (
+                    <div
+                      data-pop
+                      className={`absolute -top-12 z-20 flex gap-1 rounded-xl border border-border bg-surface p-1.5 shadow-xl ${
+                        m.mine ? 'right-0' : 'left-0'
                       }`}
                     >
-                      {timeLabel(m.created_at)}
-                    </span>
-                  </div>
+                      {GROUP_REACTIONS.map((em) => (
+                        <button
+                          key={em}
+                          type="button"
+                          onClick={() => react(m.id, em)}
+                          className="rounded-lg px-1 text-lg transition-transform hover:scale-125"
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {quoted && (
+                    <div
+                      className={`mb-0.5 max-w-full truncate rounded-lg border-l-4 border-accent bg-surface-hover px-2.5 py-1 text-[11px] text-text-dim ${
+                        m.mine ? 'text-right' : ''
+                      }`}
+                    >
+                      <span className="font-bold">@{quoted.senderName}</span>{' '}
+                      {quoted.kind === 'image'
+                        ? t('msg.kind.image')
+                        : quoted.kind === 'voice'
+                          ? t('msg.kind.voice')
+                          : (quoted.body ?? '🔒').slice(0, 80)}
+                    </div>
+                  )}
+                  {m.kind === 'text' && stickerMoodOf(m.body) ? (
+                    <div className="px-1 py-1">
+                      <Mascot mood={stickerMoodOf(m.body) as MascotMood} size={80} />
+                    </div>
+                  ) : m.kind === 'text' && m.body && !quoted && isJumbo(m.body) ? (
+                    <div className="px-1 py-0.5 text-[44px] leading-tight">{m.body}</div>
+                  ) : m.kind === 'image' ? (
+                    <div
+                      className={`bubble-shadow overflow-hidden rounded-2xl border-2 border-border-strong ${
+                        m.mine ? 'rounded-br-md' : 'rounded-bl-md'
+                      }`}
+                    >
+                      {m.body ? (
+                        <img src={m.body} alt="" className="max-h-72 w-auto max-w-full" />
+                      ) : (
+                        <div className="bg-surface px-4 py-3 text-xs italic text-text-faint">
+                          🔒 {t('msg.undecryptable')}
+                        </div>
+                      )}
+                    </div>
+                  ) : m.kind === 'voice' ? (
+                    <div
+                      className={`bubble-shadow flex items-center gap-2 rounded-2xl border-2 border-border-strong px-3 py-2 ${
+                        m.mine ? 'rounded-br-md bg-accent' : 'rounded-bl-md bg-surface'
+                      }`}
+                    >
+                      {m.body ? (
+                        <VoicePlayer src={m.body} mine={m.mine} />
+                      ) : (
+                        <span className="px-2 py-1 text-xs italic text-text-faint">
+                          🔒 {t('msg.undecryptable')}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      className={`bubble-shadow rounded-2xl border-2 border-border-strong px-4 py-2.5 text-[15px] font-medium leading-relaxed ${
+                        m.mine
+                          ? `rounded-br-md bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'}`
+                          : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
+                      }`}
+                    >
+                      {m.body === null ? (
+                        <span className="text-xs italic opacity-70">
+                          🔒 {t('msg.undecryptable')}
+                        </span>
+                      ) : (
+                        renderBody(m.body)
+                      )}
+                      <span
+                        className={`ml-2 align-baseline font-mono text-[11px] tabular-nums ${
+                          m.mine ? 'text-bg/60' : 'text-text-faint'
+                        }`}
+                      >
+                        {timeLabel(m.created_at)}
+                      </span>
+                    </div>
+                  )}
+                  {m.reactions.length > 0 && (
+                    <div className={`mt-1 flex gap-1 ${m.mine ? 'justify-end' : ''}`}>
+                      {m.reactions.map((r) => (
+                        <button
+                          key={r.emoji}
+                          type="button"
+                          onClick={() => react(m.id, r.emoji)}
+                          className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[12px] ${
+                            r.mine
+                              ? 'border-accent bg-accent-dim'
+                              : 'border-border bg-surface hover:border-border-strong'
+                          }`}
+                        >
+                          {r.emoji}
+                          {r.count > 1 && (
+                            <span className="font-mono text-[10px] font-bold text-text-dim">
+                              {r.count}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -586,28 +884,179 @@ export function GroupView({
       </div>
 
       {/* composer */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
-        }}
-        className="flex shrink-0 items-center gap-2.5 border-t border-border px-4 py-3.5"
-      >
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={t('msg.placeholder.group')}
-          maxLength={2000}
-          className="chunk-input min-w-0 flex-1 px-4 py-3 text-sm font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim()}
-          className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-bg transition-all hover:scale-105 active:scale-90 disabled:opacity-40"
+      <div className="shrink-0 border-t border-border">
+        {replyTo && (
+          <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-1.5">
+            <div className="min-w-0 truncate text-[11px] text-text-dim">
+              <ReplyIcon size={11} className="mr-1 inline" />
+              <span className="font-bold">@{replyTo.senderName}</span>{' '}
+              {replyTo.kind === 'image'
+                ? t('msg.kind.image')
+                : replyTo.kind === 'voice'
+                  ? t('msg.kind.voice')
+                  : (replyTo.body ?? '').slice(0, 80)}
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyTo(null)}
+              className="shrink-0 text-xs font-bold text-text-faint hover:text-text"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {pendingImg && (
+          <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2">
+            <img src={pendingImg} alt="" className="h-14 rounded-lg border border-border" />
+            <button
+              type="button"
+              onClick={() => setPendingImg(null)}
+              className="text-xs font-bold text-text-faint hover:text-danger"
+            >
+              ✕ {t('misc.cancel')}
+            </button>
+          </div>
+        )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+          className="flex items-center gap-2 px-4 py-3.5"
         >
-          <SendIcon size={17} />
-        </button>
-      </form>
+          <input
+            ref={imgInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              stageImage(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => imgInputRef.current?.click()}
+            title={t('attach.image')}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+          >
+            <ImageIcon size={17} />
+          </button>
+          <div data-pop className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setStickerOpen((o) => !o);
+                setEmojiOpen(false);
+              }}
+              title={t('attach.sticker')}
+              className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+            >
+              <HeadphonesIcon size={17} />
+            </button>
+            {stickerOpen && (
+              <div className="animate-scale-in absolute bottom-14 left-0 z-30 grid grid-cols-4 gap-1 rounded-2xl border-2 border-border-strong bg-surface p-2 shadow-2xl">
+                {STICKER_MOODS.map((mood) => (
+                  <button
+                    key={mood}
+                    type="button"
+                    onClick={() => sendSticker(mood)}
+                    className="rounded-xl p-1.5 transition-transform hover:scale-110 hover:bg-surface-hover"
+                  >
+                    <Mascot mood={mood} size={48} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div data-pop className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setEmojiOpen((o) => !o);
+                setStickerOpen(false);
+              }}
+              title={t('attach.emoji')}
+              className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+            >
+              <SmileIcon size={17} />
+            </button>
+            {emojiOpen && (
+              <div className="animate-scale-in absolute bottom-14 left-0 z-30 grid w-64 grid-cols-8 gap-0.5 rounded-2xl border-2 border-border-strong bg-surface p-2 shadow-2xl">
+                {GROUP_EMOJIS.map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => setDraft((d) => d + em)}
+                    className="rounded-lg p-1 text-xl transition-transform hover:scale-125 hover:bg-surface-hover"
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onPaste={(e) => {
+              const file = Array.from(e.clipboardData.files).find((f) =>
+                f.type.startsWith('image/'),
+              );
+              if (file) {
+                e.preventDefault();
+                stageImage(file);
+              }
+            }}
+            placeholder={t('msg.placeholder.group')}
+            maxLength={2000}
+            className="chunk-input min-w-0 flex-1 px-4 py-3 text-sm font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+          />
+          {recording ? (
+            <button
+              type="button"
+              onClick={stopRecording}
+              className="flex h-11 shrink-0 items-center gap-2 rounded-xl border-2 border-danger bg-danger/15 px-3 font-mono text-xs font-extrabold tabular-nums text-danger"
+            >
+              <span className="h-2 w-2 animate-pulse-dot rounded-full bg-danger" />{' '}
+              {fmtVoiceSec(recSec)} ■
+            </button>
+          ) : (
+            !draft.trim() &&
+            !pendingImg && (
+              <button
+                type="button"
+                onClick={startRecording}
+                title={t('msg.voice.rec')}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+              >
+                <MicIcon size={17} />
+              </button>
+            )
+          )}
+          <button
+            type="submit"
+            disabled={!draft.trim() && !pendingImg}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-bg transition-all hover:scale-105 active:scale-90 disabled:opacity-40"
+          >
+            <SendIcon size={17} />
+          </button>
+        </form>
+      </div>
+
+      {confirmDel !== null && (
+        <ConfirmModal
+          title={t('msg.delete')}
+          body={t('grp.msg.delete.body')}
+          confirmLabel={t('misc.delete')}
+          danger
+          onConfirm={() => {
+            const m = messages?.find((x) => x.id === confirmDel);
+            if (m) removeMsg(m);
+          }}
+          onClose={() => setConfirmDel(null)}
+        />
+      )}
 
       {/* start-jam modal: what to focus on + who's aboard */}
       {startingJam && (

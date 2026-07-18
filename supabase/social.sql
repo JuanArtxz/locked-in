@@ -536,9 +536,11 @@ grant update (nonce, body_ct, edited_at, sender_pub, recipient_pub)
 alter table public.messages drop constraint if exists messages_body_ct_check;
 alter table public.messages add constraint messages_body_ct_check
   check (char_length(body_ct) <= 120000);
+-- (kept in sync with the v0.35 block below — re-running the whole file must
+-- never re-tighten the constraint past rows that already exist)
 alter table public.messages drop constraint if exists messages_kind_check;
 alter table public.messages add constraint messages_kind_check
-  check (kind in ('text', 'jam', 'image'));
+  check (kind in ('text', 'jam', 'image', 'voice', 'status'));
 
 -- free-form profile bio (filtered client-side before upload, capped here too)
 alter table public.profiles add column if not exists bio text
@@ -944,3 +946,647 @@ $$;
 drop trigger if exists presence_seed_t on public.presence;
 create trigger presence_seed_t before insert on public.presence
   for each row execute function public.presence_seed_guard();
+
+
+-- ============================================================
+-- v0.41: SaaS readiness
+-- ============================================================
+
+-- ---------- chat media in Storage (out of Postgres) ----------
+-- Bucket is PUBLIC-read by design: every object is E2E-encrypted client-side
+-- (secretbox with a random key that travels inside the E2E message body) and
+-- lives under an unguessable uuid path. Upload/delete restricted to the
+-- owner's folder. 2MB per object.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('chatmedia', 'chatmedia', true, 2097152)
+on conflict (id) do update set public = true, file_size_limit = 2097152;
+
+drop policy if exists "chatmedia upload own" on storage.objects;
+create policy "chatmedia upload own" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'chatmedia' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "chatmedia delete own" on storage.objects;
+create policy "chatmedia delete own" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'chatmedia' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ---------- account deletion (LGPD/GDPR) ----------
+-- Every public table references auth.users ON DELETE CASCADE, so deleting the
+-- auth row wipes the whole footprint (profile, presence, messages, groups
+-- owned, reactions, backups, snapshots, pokes...).
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not signed in';
+  end if;
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+revoke all on function public.delete_my_account() from public;
+grant execute on function public.delete_my_account() to authenticated;
+
+-- ---------- opt-in crash telemetry ----------
+create table if not exists public.crash_reports (
+  id bigint generated always as identity primary key,
+  user_id uuid references auth.users(id) on delete set null,
+  app_version text,
+  os text,
+  message text not null,
+  stack text,
+  created_at timestamptz not null default now()
+);
+alter table public.crash_reports enable row level security;
+
+drop policy if exists "crash insert own" on public.crash_reports;
+create policy "crash insert own" on public.crash_reports
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+-- nobody reads reports through the API (dashboard/service only)
+drop policy if exists "crash no select" on public.crash_reports;
+
+-- cap: 10 reports per user per day, truncate huge payloads
+create or replace function public.crash_report_guard()
+returns trigger language plpgsql as $$
+begin
+  if (select count(*) from public.crash_reports
+      where user_id = new.user_id and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'daily crash report limit';
+  end if;
+  new.message := left(new.message, 500);
+  new.stack := left(new.stack, 4000);
+  new.app_version := left(new.app_version, 40);
+  new.os := left(new.os, 80);
+  new.created_at := now();
+  return new;
+end;
+$$;
+drop trigger if exists crash_report_guard_t on public.crash_reports;
+create trigger crash_report_guard_t before insert on public.crash_reports
+  for each row execute function public.crash_report_guard();
+
+-- self-GC: reports older than 30 days die on the next insert
+create or replace function public.crash_report_gc()
+returns trigger language plpgsql as $$
+begin
+  delete from public.crash_reports where created_at < now() - interval '30 days';
+  return new;
+end;
+$$;
+drop trigger if exists crash_report_gc_t on public.crash_reports;
+create trigger crash_report_gc_t after insert on public.crash_reports
+  for each statement execute function public.crash_report_gc();
+
+-- ============================================================
+-- v0.41.1: security hardening (post-review)
+-- ============================================================
+
+-- ---------- fix: crash report cap/GC actually work ----------
+-- The originals were SECURITY INVOKER: RLS hid every row from the trigger's
+-- count(), so the cap never fired and the GC never deleted. DEFINER fixes it.
+create or replace function public.crash_report_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from crash_reports
+      where user_id = new.user_id and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'daily crash report limit';
+  end if;
+  new.message := left(new.message, 500);
+  new.stack := left(new.stack, 4000);
+  new.app_version := left(new.app_version, 40);
+  new.os := left(new.os, 80);
+  new.created_at := now();
+  return new;
+end;
+$$;
+create or replace function public.crash_report_gc()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.crash_reports where created_at < now() - interval '30 days';
+  return new;
+end;
+$$;
+
+-- ---------- fix: week_key flip exploit (presence + group jam clock) ----------
+-- Old rule allowed seeding up to 6h of focus on ANY week_key change, both
+-- directions, repeatably. New rule: carryover only when moving FORWARD into a
+-- week that contains "now", capped by real elapsed time in that week.
+create or replace function public.presence_guard()
+returns trigger language plpgsql as $$
+declare
+  gap double precision;
+  wk_start timestamptz;
+begin
+  gap := greatest(extract(epoch from (now() - old.updated_at)), 0);
+  new.updated_at := now();
+  if new.week_key is not distinct from old.week_key then
+    if new.week_sec > old.week_sec + gap + 5 then
+      new.week_sec := (old.week_sec + gap + 5)::bigint;
+    end if;
+  else
+    if new.week_key is null
+       or not (new.week_key ~ '^\d{4}-\d{2}-\d{2}$')
+       or (old.week_key is not null and new.week_key <= old.week_key) then
+      new.week_sec := 0;
+    else
+      wk_start := (new.week_key || 'T00:00:00Z')::timestamptz - interval '1 day';
+      if wk_start > now()
+         or now() > wk_start + interval '9 days'
+         or new.week_sec::double precision > least(extract(epoch from (now() - wk_start)), 21600) then
+        new.week_sec := 0;
+      end if;
+    end if;
+  end if;
+  if new.total_sec > old.total_sec + gap + 5 then
+    new.total_sec := (old.total_sec + gap + 5)::bigint;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.group_time_guard()
+returns trigger language plpgsql as $$
+declare
+  gap double precision;
+  wk_start timestamptz;
+begin
+  if new.week_jam_sec is distinct from old.week_jam_sec
+     or new.week_key is distinct from old.week_key then
+    if new.user_id <> auth.uid() then
+      new.week_jam_sec := old.week_jam_sec;
+      new.week_key := old.week_key;
+      return new;
+    end if;
+    if new.week_key is not distinct from old.week_key then
+      gap := greatest(
+        extract(epoch from (now() - coalesce(old.jam_beat_at, now() - interval '75 seconds'))),
+        0
+      );
+      if new.week_jam_sec > old.week_jam_sec + gap + 5 then
+        new.week_jam_sec := (old.week_jam_sec + gap + 5)::bigint;
+      end if;
+    else
+      if new.week_key is null
+         or not (new.week_key ~ '^\d{4}-\d{2}-\d{2}$')
+         or (old.week_key is not null and new.week_key <= old.week_key) then
+        new.week_jam_sec := 0;
+      else
+        wk_start := (new.week_key || 'T00:00:00Z')::timestamptz - interval '1 day';
+        if wk_start > now()
+           or now() > wk_start + interval '9 days'
+           or new.week_jam_sec::double precision > least(extract(epoch from (now() - wk_start)), 21600) then
+          new.week_jam_sec := 0;
+        end if;
+      end if;
+    end if;
+    new.jam_beat_at := now();
+  end if;
+  return new;
+end $$;
+
+-- ---------- fix: sensitive group columns are ADMIN-only, server-side ----------
+-- The column grant let ANY member rename the group, swap the photo, change
+-- the weekly goal/pomodoro and rotate the invite code. Jam fields stay open
+-- to every member (any member may start/stop the group jam).
+create or replace function public.guard_group_admin_cols()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (new.name is distinct from old.name
+      or new.avatar_b64 is distinct from old.avatar_b64
+      or new.week_goal_hours is distinct from old.week_goal_hours
+      or new.jam_pomo is distinct from old.jam_pomo
+      or new.invite_code is distinct from old.invite_code)
+     and not public.is_group_admin(new.id) then
+    raise exception 'only admins can change group settings';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists group_admin_cols_t on public.groups;
+create trigger group_admin_cols_t before update on public.groups
+  for each row execute function public.guard_group_admin_cols();
+
+-- ---------- fix: server-side size caps (Postgres bloat abuse) ----------
+-- NOT VALID: existing rows are grandfathered, new writes are enforced.
+alter table public.profiles drop constraint if exists profiles_avatar_len;
+alter table public.profiles add constraint profiles_avatar_len
+  check (avatar_b64 is null or char_length(avatar_b64) <= 200000) not valid;
+
+alter table public.groups drop constraint if exists groups_avatar_len;
+alter table public.groups add constraint groups_avatar_len
+  check (avatar_b64 is null or char_length(avatar_b64) <= 250000) not valid;
+
+alter table public.presence drop constraint if exists presence_field_len;
+alter table public.presence add constraint presence_field_len
+  check (
+    (task is null or char_length(task) <= 200)
+    and (public_projects is null or char_length(public_projects) <= 4000)
+    and (jam_members is null or char_length(jam_members) <= 1000)
+    and (fg_app is null or char_length(fg_app) <= 120)
+    and (records is null or char_length(records) <= 500)
+    and (week_key is null or char_length(week_key) <= 10)
+  ) not valid;
+
+alter table public.jam_invites drop constraint if exists jam_invites_task_len;
+alter table public.jam_invites add constraint jam_invites_task_len
+  check (char_length(task) <= 200) not valid;
+
+alter table public.feed_events drop constraint if exists feed_payload_len;
+alter table public.feed_events add constraint feed_payload_len
+  check (char_length(payload::text) <= 2000) not valid;
+
+alter table public.statuses drop constraint if exists statuses_bg_len;
+alter table public.statuses add constraint statuses_bg_len
+  check (bg is null or char_length(bg) <= 16) not valid;
+
+alter table public.messages drop constraint if exists messages_meta_len;
+alter table public.messages add constraint messages_meta_len
+  check (
+    char_length(nonce) <= 64
+    and char_length(sender_pub) <= 64
+    and char_length(recipient_pub) <= 64
+  ) not valid;
+
+alter table public.groups drop constraint if exists groups_invite_code_len;
+alter table public.groups add constraint groups_invite_code_len
+  check (invite_code is null or invite_code ~ '^[a-z0-9]{8,32}$') not valid;
+
+-- ---------- fix: account deletion also purges Storage media (LGPD) ----------
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not signed in';
+  end if;
+  delete from storage.objects
+    where bucket_id = 'chatmedia'
+      and (storage.foldername(name))[1] = auth.uid()::text;
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+revoke all on function public.delete_my_account() from public;
+grant execute on function public.delete_my_account() to authenticated;
+
+-- ---------- mitigate: per-user daily upload quota on chatmedia ----------
+-- 300 objects/day/user. Wrapped: if this project's role can't attach triggers
+-- to storage.objects, skip with a notice instead of failing the whole file.
+create or replace function public.chatmedia_upload_quota()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.bucket_id = 'chatmedia' and (
+    select count(*) from storage.objects
+    where bucket_id = 'chatmedia'
+      and owner = new.owner
+      and created_at > now() - interval '1 day'
+  ) >= 300 then
+    raise exception 'daily upload limit reached';
+  end if;
+  return new;
+end;
+$$;
+do $$
+begin
+  drop trigger if exists chatmedia_quota_t on storage.objects;
+  create trigger chatmedia_quota_t before insert on storage.objects
+    for each row execute function public.chatmedia_upload_quota();
+exception when insufficient_privilege then
+  raise notice 'no privilege to attach trigger on storage.objects - upload quota skipped';
+end $$;
+
+-- ============================================================
+-- v0.42: private realtime channels + group chat E2EE
+-- ============================================================
+
+-- ---------- private per-user inbox for ephemeral events ----------
+-- Topic "ubox:<uuid>": only the owner may LISTEN; only accepted friends,
+-- groupmates or the owner may SEND. Kills the two global-broadcast holes
+-- (typing metadata leak + forged jam-shame): strangers can neither read nor
+-- write, and clients filter senders against their own rosters.
+drop policy if exists "ubox read own" on realtime.messages;
+create policy "ubox read own" on realtime.messages
+  for select to authenticated
+  using (
+    realtime.messages.extension in ('broadcast', 'presence')
+    and realtime.topic() like 'ubox:%'
+    and realtime.topic() = 'ubox:' || auth.uid()::text
+  );
+
+drop policy if exists "ubox send friends" on realtime.messages;
+create policy "ubox send friends" on realtime.messages
+  for insert to authenticated
+  with check (
+    realtime.messages.extension in ('broadcast', 'presence')
+    and realtime.topic() like 'ubox:%'
+    and (
+      realtime.topic() = 'ubox:' || auth.uid()::text
+      or exists (
+        select 1 from public.friendships f
+        where f.status = 'accepted'
+          and ((f.requester = auth.uid()
+                and 'ubox:' || f.addressee::text = realtime.topic())
+            or (f.addressee = auth.uid()
+                and 'ubox:' || f.requester::text = realtime.topic()))
+      )
+      or public.shares_group_with(
+           nullif(substring(realtime.topic() from 6), '')::uuid
+         )
+    )
+  );
+
+-- ---------- group chat E2EE ----------
+-- Model: one random symmetric group key (secretbox) per key VERSION. Each
+-- version is wrapped individually for every member with crypto_box
+-- (wrapper's private key + member's public key). Kick/leave => the next
+-- sender rotates to a new version wrapped only for the remaining members,
+-- so removed members cannot read anything sent after their removal.
+-- The server stores only wrapped keys and ciphertext.
+create table if not exists public.group_keys (
+  group_id bigint not null references public.groups(id) on delete cascade,
+  version int not null check (version between 1 and 100000),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  -- crypto_box(group_key) for user_id, plus the wrap metadata to open it
+  wrapped_key text not null check (char_length(wrapped_key) <= 400),
+  nonce text not null check (char_length(nonce) <= 64),
+  wrapped_by uuid not null references auth.users(id) on delete cascade,
+  wrapped_by_pub text not null check (char_length(wrapped_by_pub) <= 64),
+  created_at timestamptz not null default now(),
+  primary key (group_id, version, user_id)
+);
+
+alter table public.group_keys enable row level security;
+
+-- you may only ever read the wraps addressed TO you
+drop policy if exists gk_select on public.group_keys;
+create policy gk_select on public.group_keys
+  for select to authenticated using (auth.uid() = user_id);
+
+-- any member may wrap (create/rotate) — but only as themselves, only for
+-- members of that group (trigger), and never rewriting an existing wrap
+drop policy if exists gk_insert on public.group_keys;
+create policy gk_insert on public.group_keys
+  for insert to authenticated
+  with check (auth.uid() = wrapped_by and public.is_group_member(group_id));
+
+create or replace function public.group_key_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (
+    select 1 from group_members
+    where group_id = new.group_id and user_id = new.user_id
+  ) then
+    raise exception 'wrap target is not a group member';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists group_key_guard_t on public.group_keys;
+create trigger group_key_guard_t before insert on public.group_keys
+  for each row execute function public.group_key_guard();
+
+-- ciphertext columns on group messages (legacy plaintext rows keep nonce null)
+alter table public.group_messages add column if not exists nonce text
+  check (nonce is null or char_length(nonce) <= 64);
+alter table public.group_messages add column if not exists key_ver int;
+alter table public.group_messages add column if not exists reply_to bigint;
+
+-- E2E bodies are base64 ciphertext (media markers stay tiny; text grows ~1.4x)
+alter table public.group_messages drop constraint if exists group_messages_body_check;
+alter table public.group_messages add constraint group_messages_body_check
+  check (char_length(body) <= 8000) not valid;
+
+-- new kinds: image + voice (bodies are E2E markers pointing at chatmedia)
+alter table public.group_messages drop constraint if exists group_messages_kind_check;
+alter table public.group_messages add constraint group_messages_kind_check
+  check (kind in ('text', 'system', 'image', 'voice'));
+
+-- ---------- group message reactions (members only) ----------
+create table if not exists public.group_msg_reactions (
+  id bigint generated always as identity primary key,
+  message_id bigint not null references public.group_messages(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  emoji text not null check (char_length(emoji) <= 8),
+  created_at timestamptz not null default now(),
+  unique (message_id, user_id, emoji)
+);
+
+alter table public.group_msg_reactions enable row level security;
+
+create or replace function public.gmsg_group_of(mid bigint)
+returns bigint language sql security definer set search_path = public as $$
+  select group_id from group_messages where id = mid;
+$$;
+revoke all on function public.gmsg_group_of(bigint) from public;
+grant execute on function public.gmsg_group_of(bigint) to authenticated;
+
+drop policy if exists gmr_select on public.group_msg_reactions;
+create policy gmr_select on public.group_msg_reactions
+  for select to authenticated
+  using (public.is_group_member(public.gmsg_group_of(message_id)));
+
+drop policy if exists gmr_insert on public.group_msg_reactions;
+create policy gmr_insert on public.group_msg_reactions
+  for insert to authenticated
+  with check (
+    auth.uid() = user_id
+    and public.is_group_member(public.gmsg_group_of(message_id))
+  );
+
+drop policy if exists gmr_delete on public.group_msg_reactions;
+create policy gmr_delete on public.group_msg_reactions
+  for delete to authenticated using (auth.uid() = user_id);
+
+create or replace function public.gmr_cap()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from group_msg_reactions
+      where message_id = new.message_id and user_id = new.user_id) >= 8 then
+    raise exception 'too many reactions on this message';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists gmr_cap_t on public.group_msg_reactions;
+create trigger gmr_cap_t before insert on public.group_msg_reactions
+  for each row execute function public.gmr_cap();
+
+do $$
+begin
+  alter publication supabase_realtime add table public.group_msg_reactions;
+exception when duplicate_object then null;
+end $$;
+
+-- ============================================================
+-- v0.42.1: profile directory anti-enumeration
+-- ============================================================
+-- profiles was SELECT using(true): any signed-in account could bypass the app
+-- and scrape the ENTIRE user directory (usernames + avatars + bios) with a
+-- single gt/lt trick — a ready-made phishing/harassment list at scale. Now the
+-- table is readable only for people you already have a relationship with, and
+-- discovery-by-exact-username goes through SECURITY DEFINER lookups that can
+-- never dump the whole table.
+drop policy if exists profiles_select on public.profiles;
+create policy profiles_select on public.profiles
+  for select to authenticated
+  using (
+    auth.uid() = user_id
+    or public.shares_group_with(user_id)
+    or exists (
+      select 1 from public.friendships f
+      where (f.requester = auth.uid() and f.addressee = profiles.user_id)
+         or (f.addressee = auth.uid() and f.requester = profiles.user_id)
+    )
+  );
+
+-- exact-match discovery for "add friend by @name"
+create or replace function public.lookup_profile(name text)
+returns table(user_id uuid, username text, avatar_b64 text, e2e_pub text)
+language sql security definer set search_path = public as $$
+  select p.user_id, p.username, p.avatar_b64, p.e2e_pub
+  from public.profiles p
+  where lower(p.username) = lower(name)
+  limit 1;
+$$;
+revoke all on function public.lookup_profile(text) from public;
+grant execute on function public.lookup_profile(text) to authenticated;
+
+-- batch exact-match for jam-roster avatars (people who may not be my friends);
+-- hard-capped so it can't be turned into a bulk dump
+create or replace function public.lookup_profiles(names text[])
+returns table(username text, avatar_b64 text)
+language sql security definer set search_path = public as $$
+  select p.username, p.avatar_b64
+  from public.profiles p
+  where lower(p.username) = any (select lower(n) from unnest(names) as n)
+  limit 30;
+$$;
+revoke all on function public.lookup_profiles(text[]) from public;
+grant execute on function public.lookup_profiles(text[]) to authenticated;
+
+-- ============================================================
+-- v0.43: block + report (moderation)
+-- ============================================================
+
+-- ---------- blocks: hard-cut all contact both ways ----------
+create table if not exists public.blocks (
+  blocker uuid not null references auth.users(id) on delete cascade,
+  blocked uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker, blocked),
+  check (blocker <> blocked)
+);
+alter table public.blocks enable row level security;
+
+drop policy if exists blocks_select on public.blocks;
+create policy blocks_select on public.blocks
+  for select to authenticated using (blocker = auth.uid());
+
+drop policy if exists blocks_insert on public.blocks;
+create policy blocks_insert on public.blocks
+  for insert to authenticated with check (blocker = auth.uid());
+
+drop policy if exists blocks_delete on public.blocks;
+create policy blocks_delete on public.blocks
+  for delete to authenticated using (blocker = auth.uid());
+
+-- is there a block in EITHER direction between me and `other`?
+create or replace function public.block_between(other uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select exists (
+    select 1 from blocks
+    where (blocker = auth.uid() and blocked = other)
+       or (blocker = other and blocked = auth.uid())
+  );
+$$;
+revoke all on function public.block_between(uuid) from public;
+grant execute on function public.block_between(uuid) to authenticated;
+
+-- re-gate every 1:1 contact path so a block is airtight server-side:
+-- no new friendship, message, jam invite or poke can cross a block.
+drop policy if exists friendships_insert on public.friendships;
+create policy friendships_insert on public.friendships
+  for insert to authenticated
+  with check (
+    auth.uid() = requester and status = 'pending'
+    and not public.block_between(addressee)
+  );
+
+drop policy if exists messages_insert on public.messages;
+create policy messages_insert on public.messages
+  for insert to authenticated
+  with check (
+    auth.uid() = sender
+    and not public.block_between(recipient)
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.requester = sender and f.addressee = recipient)
+          or (f.addressee = sender and f.requester = recipient))
+    )
+  );
+
+drop policy if exists jam_insert on public.jam_invites;
+create policy jam_insert on public.jam_invites
+  for insert to authenticated
+  with check (
+    auth.uid() = from_user and status = 'pending'
+    and not public.block_between(to_user)
+  );
+
+drop policy if exists pokes_insert on public.pokes;
+create policy pokes_insert on public.pokes
+  for insert to authenticated
+  with check (
+    auth.uid() = from_user
+    and not public.block_between(to_user)
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.requester = from_user and f.addressee = to_user)
+          or (f.requester = to_user and f.addressee = from_user))
+    )
+  );
+
+-- ---------- reports: users file, only staff (service role) reads ----------
+create table if not exists public.reports (
+  id bigint generated always as identity primary key,
+  reporter uuid not null references auth.users(id) on delete cascade,
+  target uuid not null references auth.users(id) on delete set null,
+  reason text not null check (char_length(reason) <= 60),
+  detail text check (detail is null or char_length(detail) <= 500),
+  created_at timestamptz not null default now(),
+  check (reporter <> target)
+);
+alter table public.reports enable row level security;
+
+drop policy if exists reports_insert on public.reports;
+create policy reports_insert on public.reports
+  for insert to authenticated with check (reporter = auth.uid());
+-- no select/update/delete policy: reports are write-only for users
+
+-- cap 20 reports/day/user + self-GC of anything older than 90 days
+create or replace function public.report_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from reports
+      where reporter = new.reporter and created_at > now() - interval '1 day') >= 20 then
+    raise exception 'daily report limit';
+  end if;
+  new.reason := left(new.reason, 60);
+  new.detail := left(new.detail, 500);
+  delete from reports where created_at < now() - interval '90 days';
+  return new;
+end;
+$$;
+drop trigger if exists report_guard_t on public.reports;
+create trigger report_guard_t before insert on public.reports
+  for each row execute function public.report_guard();

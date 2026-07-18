@@ -16,6 +16,7 @@ import * as chatLib from '../lib/chat';
 import { ConfirmModal } from './Confirm';
 import { CreateGroupModal, GroupView } from './Groups';
 import { Mascot } from './Mascot';
+import { useToast } from '../hooks/useToast';
 
 export interface MyFocusState {
   focusing: boolean;
@@ -611,6 +612,7 @@ export function FriendsPage({
   onJoinGroupJam,
   onLeaveGroupJam,
 }: FriendsProps) {
+  const { pushToast } = useToast();
   const [addName, setAddName] = useState('');
   // WhatsApp-style rows: last decrypted message per conversation
   const [lastMsgs, setLastMsgs] = useState<Map<string, chatLib.LastMessage>>(() => new Map());
@@ -630,7 +632,6 @@ export function FriendsPage({
   const [viewing, setViewing] = useState<string | null>(null); // friend userId
   const [chatting, setChatting] = useState<string | null>(null); // friend userId
   const [allFriendsOpen, setAllFriendsOpen] = useState(false);
-  const [fullRankOpen, setFullRankOpen] = useState(false);
   const [jamDetail, setJamDetail] = useState<{
     task: string;
     names: string[];
@@ -640,6 +641,8 @@ export function FriendsPage({
     null,
   );
   const [confirmUnfriend, setConfirmUnfriend] = useState<FriendEntry | null>(null);
+  const [confirmBlock, setConfirmBlock] = useState<FriendEntry | null>(null);
+  const [reporting, setReporting] = useState<FriendEntry | null>(null);
   const [joinLinkOpen, setJoinLinkOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joiningGroup, setJoiningGroup] = useState(false);
@@ -790,7 +793,6 @@ export function FriendsPage({
     ? (groupsHook.list.find((g) => g.group.id === groupOpen) ?? null)
     : null;
 
-  const wk = social.weekKey();
   const sortedFriends = sortFriendsByStatus(state.friends, soc.statusOf);
   // WhatsApp-style time: today → HH:mm, yesterday → label, older → dd/mm
   const rowTime = (iso: string) => {
@@ -882,17 +884,6 @@ export function FriendsPage({
       </div>
     );
   };
-  const ranking = [
-    { userId: me.user_id, username: me.username, isMe: true },
-    ...state.friends.map((f) => ({ userId: f.userId, username: f.username, isMe: false })),
-  ]
-    .map((p) => {
-      const row = soc.presence.get(p.userId);
-      return { ...p, weekSec: row && row.week_key === wk ? row.week_sec : 0 };
-    })
-    .sort((a, b) => b.weekSec - a.weekSec);
-  const medals = ['🥇', '🥈', '🥉'];
-
   return (
     <div className="flex h-full min-h-0">
       {/* LEFT: friends column */}
@@ -1225,40 +1216,6 @@ export function FriendsPage({
           )}
         </div>
 
-        {state.friends.length > 0 && (
-          <div className="chunk space-y-2 p-3">
-            <div className="flex items-baseline justify-between">
-              <span className="text-[10px] font-extrabold uppercase tracking-wide text-text-dim">
-                {t('fr.ranking')}
-              </span>
-              <span className="text-[10px] font-medium text-text-faint">{t('fr.week')}</span>
-            </div>
-            {ranking.slice(0, 3).map((p, i) => (
-              <div key={p.userId} className="flex items-center gap-2 text-xs">
-                <span className="w-5 text-center">
-                  {medals[i] ?? <span className="font-bold text-text-faint">{i + 1}</span>}
-                </span>
-                <span
-                  className={`min-w-0 flex-1 truncate font-bold ${p.isMe ? 'text-accent' : 'text-text'}`}
-                >
-                  {p.isMe ? t('fr.me') : `@${p.username}`}
-                </span>
-                <span className="shrink-0 font-mono font-bold tabular-nums text-text-dim">
-                  {formatDurationShort(p.weekSec)}
-                </span>
-              </div>
-            ))}
-            {ranking.length > 3 && (
-              <button
-                type="button"
-                onClick={() => setFullRankOpen(true)}
-                className="w-full rounded-lg py-1 text-[10px] font-extrabold uppercase tracking-wide text-text-faint hover:bg-surface-hover hover:text-text"
-              >
-                {t('fr.rank.more')}
-              </button>
-            )}
-          </div>
-        )}
       </aside>
 
       {/* full friends list modal */}
@@ -1346,6 +1303,26 @@ export function FriendsPage({
             >
               ✕ {t('fr.unfriend')}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setReporting(ctxMenu.friend);
+                setCtxMenu(null);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-text-dim hover:bg-surface-hover"
+            >
+              ⚑ {t('mod.report')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmBlock(ctxMenu.friend);
+                setCtxMenu(null);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-bold text-danger hover:bg-danger/10"
+            >
+              ⊘ {t('mod.block')}
+            </button>
           </div>
         </div>,
         document.body,
@@ -1402,6 +1379,38 @@ export function FriendsPage({
         />
       )}
 
+      {confirmBlock && (
+        <ConfirmModal
+          title={t('mod.block')}
+          body={t('mod.block.confirm', confirmBlock.username)}
+          confirmLabel={t('mod.block')}
+          onConfirm={() => {
+            const b = confirmBlock;
+            social.blockUser(b.userId).then((err) => {
+              if (err) onError(err);
+              else pushToast(t('mod.block.done', b.username), 'info');
+              soc.refresh();
+            });
+          }}
+          onClose={() => setConfirmBlock(null)}
+        />
+      )}
+
+      {reporting && (
+        <ReportModal
+          username={reporting.username}
+          onCancel={() => setReporting(null)}
+          onSubmit={(reason, detail) => {
+            const r = reporting;
+            setReporting(null);
+            social.reportUser(r.userId, reason, detail).then((err) => {
+              if (err) onError(err);
+              else pushToast(t('mod.report.done'), 'info');
+            });
+          }}
+        />
+      )}
+
       {/* active jam detail — see who's inside + ask to join */}
       {jamDetail && (
         <JamDetailModal
@@ -1416,46 +1425,6 @@ export function FriendsPage({
           }
           onClose={() => setJamDetail(null)}
         />
-      )}
-
-      {/* full weekly ranking modal */}
-      {fullRankOpen && (
-        <div
-          className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
-          onMouseDown={(e) => e.target === e.currentTarget && setFullRankOpen(false)}
-        >
-          <div className="chunk animate-scale-in flex max-h-[80vh] w-full max-w-sm flex-col p-4">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <h2 className="text-base font-extrabold text-text">
-                {t('fr.ranking')} · {t('fr.week')}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setFullRankOpen(false)}
-                className="rounded-lg px-2 py-1 text-sm font-bold text-text-faint hover:text-text"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
-              {ranking.map((p, i) => (
-                <div key={p.userId} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm">
-                  <span className="w-6 text-center">
-                    {medals[i] ?? <span className="font-bold text-text-faint">{i + 1}</span>}
-                  </span>
-                  <span
-                    className={`min-w-0 flex-1 truncate font-bold ${p.isMe ? 'text-accent' : 'text-text'}`}
-                  >
-                    {p.isMe ? t('fr.me') : `@${p.username}`}
-                  </span>
-                  <span className="shrink-0 font-mono font-bold tabular-nums text-text-dim">
-                    {formatDurationShort(p.weekSec)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       )}
 
       {/* RIGHT: chat / profile / placeholder */}
@@ -1473,6 +1442,7 @@ export function FriendsPage({
               <ChatView
                 key={chattingFriend.userId}
                 friend={chattingFriend}
+                peerTypingNow={typingIds.has(chattingFriend.userId)}
                 myUserId={me.user_id}
                 statusLine={statusLineFor(chatStatus, presRow, chattingFriend.statusText, chattingFriend.username)}
                 statusColor={statusText(chatStatus)}
@@ -1546,6 +1516,71 @@ export function FriendsPage({
           onError={onError}
         />
       )}
+    </div>
+  );
+}
+
+const REPORT_REASONS = ['spam', 'harassment', 'inappropriate', 'impersonation', 'other'] as const;
+
+function ReportModal({
+  username,
+  onCancel,
+  onSubmit,
+}: {
+  username: string;
+  onCancel: () => void;
+  onSubmit: (reason: string, detail: string) => void;
+}) {
+  const [reason, setReason] = useState<string>('spam');
+  const [detail, setDetail] = useState('');
+  return (
+    <div
+      className="animate-fade-in fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div className="chunk animate-scale-in w-full max-w-sm p-5">
+        <h2 className="text-base font-extrabold text-text">{t('mod.report.title', username)}</h2>
+        <p className="mt-1 text-[12px] text-text-dim">{t('mod.report.body')}</p>
+        <div className="mt-3 space-y-1.5">
+          {REPORT_REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setReason(r)}
+              className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-[13px] font-semibold ${
+                reason === r
+                  ? 'border-accent bg-accent-dim text-text'
+                  : 'border-border text-text-dim hover:border-border-strong'
+              }`}
+            >
+              {t(`mod.reason.${r}`)}
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={detail}
+          onChange={(e) => setDetail(e.target.value.slice(0, 500))}
+          placeholder={t('mod.report.detail')}
+          rows={3}
+          className="chunk-input mt-3 w-full resize-none px-3 py-2 text-[13px] text-text placeholder:text-text-faint"
+        />
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="chunk-btn flex-1 py-2.5 text-[13px] text-text"
+          >
+            {t('misc.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSubmit(reason, detail)}
+            className="flex-1 rounded-xl bg-danger py-2.5 text-[13px] font-extrabold text-white"
+          >
+            {t('mod.report')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

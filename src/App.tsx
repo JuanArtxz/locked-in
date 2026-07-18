@@ -19,7 +19,9 @@ import { CommandPalette } from './components/CommandPalette';
 import type { Command } from './components/CommandPalette';
 import { ProfilePage } from './components/Profile';
 import { SettingsScreen } from './components/Settings';
-import { StatusPage } from './components/Status';
+import { RankingPage } from './components/Ranking';
+import { Onboarding } from './components/Onboarding';
+import * as telemetry from './lib/telemetry';
 import { Titlebar } from './components/Titlebar';
 import { Week } from './components/Week';
 import { cleanProfanity } from './lib/filter';
@@ -50,7 +52,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`;
 }
 
-type Tab = 'home' | 'routine' | 'analytics' | 'goals' | 'friends' | 'status' | 'profile' | 'settings';
+type Tab = 'home' | 'routine' | 'analytics' | 'goals' | 'friends' | 'ranking' | 'profile' | 'settings';
 
 // settings + profile intentionally not in the nav — the titlebar gear and
 // avatar menu open them. Check-in/Hábitos live under Rotina; Semana/Stats/
@@ -61,7 +63,7 @@ const TABS: { id: Tab; labelKey: string }[] = [
   { id: 'analytics', labelKey: 'tab.analytics' },
   { id: 'goals', labelKey: 'tab.goals' },
   { id: 'friends', labelKey: 'tab.friends' },
-  { id: 'status', labelKey: 'tab.status' },
+  { id: 'ranking', labelKey: 'tab.ranking' },
 ];
 
 function SubTabs<T extends string>({
@@ -97,7 +99,33 @@ function SubTabs<T extends string>({
 
 function AppShell() {
   const { pushToast } = useToast();
-  const onError = useCallback((message: string) => pushToast(message, 'error'), [pushToast]);
+  // raw Supabase/network errors are cryptic — map the common ones to something
+  // a human understands before they hit a toast
+  const onError = useCallback(
+    (message: string) => {
+      const m = message.toLowerCase();
+      let friendly = message;
+      if (m.includes('jwt') || m.includes('expired') || m.includes('not signed in')) {
+        // WebView2 froze the refresh timer — heal silently, don't alarm the user
+        import('./lib/cloud').then((c) => c.ensureFreshSession());
+        return;
+      }
+      if (
+        m.includes('failed to fetch') ||
+        m.includes('networkerror') ||
+        m.includes('load failed') ||
+        !navigator.onLine
+      ) {
+        friendly = t('err.network');
+      } else if (m.includes('rate') || m.includes('limit') || m.includes('429')) {
+        friendly = t('err.rate');
+      } else if (m.includes('row-level security') || m.includes('violates')) {
+        friendly = t('err.denied');
+      }
+      pushToast(friendly, 'error');
+    },
+    [pushToast],
+  );
   const settingsHook = useSettings(onError);
   const focus = useFocusSession({
     mirrorEnabled: settingsHook.settings?.mirror_enabled ?? true,
@@ -144,10 +172,47 @@ function AppShell() {
     return () => window.clearTimeout(id);
   }, []);
 
-  // language: apply saved choice; empty = first run, ask. Default is English.
+  // language: apply saved choice. Default is English (most users are abroad);
+  // the picker is gone — anyone can switch to Portuguese in Settings.
   const language = settingsHook.settings?.language;
   setLang(language === 'pt' ? 'pt' : 'en');
-  const showFirstRun = settingsHook.settings !== null && language === '';
+  const showFirstRun = false;
+
+  // connectivity banner: navigator flag + a light periodic reachability check
+  // (the flag alone is unreliable — it says "online" on a dead wifi)
+  const [offline, setOffline] = useState(() => !navigator.onLine);
+  useEffect(() => {
+    const heal = () => {
+      if (navigator.onLine) import('./lib/cloud').then((c) => c.ensureFreshSession());
+    };
+    const on = () => {
+      setOffline(false);
+      heal();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    // WebView2 unfreezes on focus — refresh the token before queries fire again
+    window.addEventListener('focus', heal);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+      window.removeEventListener('focus', heal);
+    };
+  }, []);
+
+  // opt-in crash telemetry — hooks installed once, gate follows the setting
+  useEffect(() => {
+    telemetry.installTelemetry();
+    getVersion()
+      .then((v) => {
+        (window as unknown as { __APP_VERSION__?: string }).__APP_VERSION__ = v;
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    telemetry.setTelemetryEnabled(settingsHook.settings?.telemetry_enabled === true);
+  }, [settingsHook.settings?.telemetry_enabled]);
 
   // auth gate: after the language is picked, show the login screen unless the
   // user is already signed in or chose guest mode on this machine
@@ -155,18 +220,37 @@ function AppShell() {
   const [signedIn, setSignedIn] = useState(false);
   const [guest, setGuest] = useState(() => localStorage.getItem('guest-mode') === '1');
   useEffect(() => {
+    let unsub: (() => void) | undefined;
     import('./lib/cloud')
-      .then((cloud) => cloud.currentUser())
+      .then((cloud) => {
+        // a session can die outside our own logout flow (password changed on
+        // another device, account deleted) — mirror that into the UI so social
+        // features gate instead of silently erroring forever
+        const { data } = cloud.supabase.auth.onAuthStateChange((event) => {
+          if (event === 'SIGNED_OUT') setSignedIn(false);
+          if (event === 'SIGNED_IN') setSignedIn(true);
+        });
+        unsub = () => data.subscription.unsubscribe();
+        return cloud.currentUser();
+      })
       .then((u) => setSignedIn(!!u))
       .catch(() => setSignedIn(false))
       .finally(() => setAuthChecked(true));
+    return () => unsub?.();
   }, []);
   const showLogin =
     settingsHook.settings !== null && !showFirstRun && authChecked && !signedIn && !guest;
 
+  // one-time guided setup — full-screen, after language + auth gate
+  const [onboardOpen, setOnboardOpen] = useState(
+    () => localStorage.getItem('onboarded-v1') !== '1',
+  );
+
   // friends + live presence (inert for guests)
   const social = useSocial(signedIn, onError);
   const groups = useGroups(signedIn, onError);
+  const groupsRef = useRef<typeof groups.list>([]);
+  groupsRef.current = groups.list;
 
   // the group whose jam I'm focusing in (server-authoritative membership lives
   // in group_members.in_jam; this mirrors it locally for the UI + leave path)
@@ -1103,9 +1187,10 @@ function AppShell() {
   // procrastination app for 2 straight minutes rats you out to the whole jam.
   // Tracker off = zero detection, period. Broadcast is ephemeral (no rows). ----
   const shameChanRef = useRef<ReturnType<typeof socialLib.joinJamShame> | null>(null);
+  const myUserIdForShame = social.state?.me?.user_id ?? null;
   useEffect(() => {
-    if (!signedIn) return;
-    const chan = socialLib.joinJamShame((p) => {
+    if (!signedIn || !myUserIdForShame) return;
+    const chan = socialLib.joinJamShame(myUserIdForShame, (p) => {
       const meL = myUsernameRef.current?.toLowerCase();
       if (!meL || p.from.toLowerCase() === meL) return;
       if (!p.members.includes(meL)) return;
@@ -1127,7 +1212,7 @@ function AppShell() {
       chan.close();
       shameChanRef.current = null;
     };
-  }, [signedIn, pushToast]);
+  }, [signedIn, myUserIdForShame, pushToast]);
 
   const distractedSinceRef = useRef<number | null>(null);
   const lastShameRef = useRef(0);
@@ -1169,7 +1254,20 @@ function AppShell() {
       lastShameRef.current = now;
       const meName = myUsernameRef.current;
       if (!meName) return;
-      shameChanRef.current?.send({
+      // usernames → userIds (friends + groupmates cover every possible jam-mate)
+      const idOf = new Map<string, string>();
+      for (const f of socialStateRef.current?.friends ?? []) {
+        idOf.set(f.username.toLowerCase(), f.userId);
+      }
+      for (const g of groupsRef.current) {
+        for (const m of g.members) idOf.set(m.username.toLowerCase(), m.user_id);
+      }
+      const recipients = jamNow.members
+        .filter((m) => m.toLowerCase() !== meName.toLowerCase())
+        .map((m) => idOf.get(m.toLowerCase()))
+        .filter((x): x is string => !!x);
+      if (recipients.length === 0) return;
+      shameChanRef.current?.sendTo(recipients, {
         from: meName,
         app: fg.replace(/\.exe$/i, ''),
         members: jamNow.members.map((m) => m.toLowerCase()),
@@ -1761,38 +1859,28 @@ function AppShell() {
     );
   }
 
+  // guided first-run setup — owns the whole window until finished/skipped
+  if (onboardOpen && settingsHook.settings && !showFirstRun) {
+    return (
+      <Onboarding
+        settings={settingsHook.settings}
+        update={settingsHook.update}
+        signedIn={signedIn}
+        onCreateAccount={() => {
+          localStorage.setItem('onboarded-v1', '1');
+          localStorage.removeItem('guest-mode');
+          window.location.reload();
+        }}
+        onDone={() => {
+          setOnboardOpen(false);
+          setTab('home');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col bg-bg text-text">
-      {showFirstRun && (
-        <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <div className="animate-scale-in flex w-full max-w-sm flex-col items-center rounded-2xl border border-border bg-surface p-8 text-center shadow-2xl shadow-black/50">
-            <Mascot mood="happy" size={90} />
-            <h2 className="mt-4 text-lg font-semibold tracking-tight text-text">
-              escolhe teu idioma · pick your language
-            </h2>
-            <p className="mt-1 text-xs text-text-faint">
-              dá pra trocar depois nos Ajustes · you can change it later
-            </p>
-            <div className="mt-6 flex w-full gap-2">
-              <button
-                type="button"
-                onClick={() => settingsHook.update('language', 'pt')}
-                className="flex-1 rounded-xl border border-border bg-bg px-4 py-3 text-sm font-semibold text-text transition-colors hover:border-accent"
-              >
-                🇧🇷 Português
-              </button>
-              <button
-                type="button"
-                onClick={() => settingsHook.update('language', 'en')}
-                className="flex-1 rounded-xl border border-border bg-bg px-4 py-3 text-sm font-semibold text-text transition-colors hover:border-accent"
-              >
-                🇺🇸 English
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {keyModal && (
         <KeyBackupModal
           mode={keyModal}
@@ -1950,6 +2038,13 @@ function AppShell() {
         onOpenProfile={() => setTab('profile')}
         focusing={focus.phase === 'focusing'}
       />
+
+      {signedIn && offline && (
+        <div className="flex shrink-0 items-center justify-center gap-2 bg-danger/15 py-1 text-[11px] font-bold text-danger">
+          <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-danger" />
+          {t('net.offline')}
+        </div>
+      )}
 
       {paletteOpen && (
         <CommandPalette
@@ -2111,9 +2206,7 @@ function AppShell() {
             onLeaveGroupJam={leaveGroupJam}
           />
         )}
-        {tab === 'status' && (
-          <StatusPage soc={social} onError={onError} onOpenChat={openChatShortcut} />
-        )}
+        {tab === 'ranking' && <RankingPage soc={social} signedIn={signedIn} />}
         {tab === 'settings' && <SettingsScreen settingsHook={settingsHook} onError={onError} />}
       </main>
       {signedIn && tab !== 'friends' && settingsHook.settings?.friends_bar_enabled !== false && (

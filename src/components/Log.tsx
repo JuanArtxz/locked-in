@@ -5,6 +5,7 @@ import { dateLocale, t } from '../lib/i18n';
 import { dateKey, formatDurationShort, localDayKey, todayKey } from '../lib/time';
 import type { Break, Session } from '../types';
 import { DayTimeline } from './Timeline';
+import { Mascot } from './Mascot';
 
 interface LogProps {
   onError: (message: string) => void;
@@ -243,9 +244,12 @@ export function Log({ onError, refreshKey }: LogProps) {
 
   if (sessions.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-1.5">
-        <span className="text-sm text-text-dim">{t('log.empty')}</span>
-        <span className="text-xs text-text-faint">{t('log.empty.sub')}</span>
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <Mascot mood="sleep" size={80} />
+        <div className="text-center">
+          <div className="text-sm font-bold text-text-dim">{t('log.empty')}</div>
+          <div className="mt-1 text-xs text-text-faint">{t('log.empty.sub')}</div>
+        </div>
       </div>
     );
   }

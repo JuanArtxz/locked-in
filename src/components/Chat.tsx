@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../hooks/useToast';
 import * as chat from '../lib/chat';
+import * as media from '../lib/media';
 import { cleanProfanity } from '../lib/filter';
 import { Mascot } from './Mascot';
 import type { MascotMood } from './Mascot';
@@ -32,7 +33,7 @@ const convoCache = new Map<string, DecryptedMessage[]>();
 // only one voice note plays at a time (WhatsApp behavior)
 let activeVoiceEl: HTMLAudioElement | null = null;
 
-function fmtVoiceSec(s: number) {
+export function fmtVoiceSec(s: number) {
   if (!Number.isFinite(s) || s < 0) s = 0;
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 }
@@ -40,7 +41,7 @@ function fmtVoiceSec(s: number) {
 const VOICE_BARS = 28;
 const VOICE_RATES = [1, 1.5, 2];
 
-function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
+export function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -216,11 +217,19 @@ function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
 }
 
 const REACTION_SET = ['👍', '❤️', '😂', '🔥', '👀'];
-const STICKER_MOODS: MascotMood[] = ['happy', 'hyped', 'focus', 'relax', 'sleep', 'sad', 'angry'];
+export const STICKER_MOODS: MascotMood[] = ['happy', 'hyped', 'focus', 'relax', 'sleep', 'sad', 'angry'];
 const CHAT_THEMES = ['#d4ff3f', '#7dd3fc', '#a78bfa', '#f472b6', '#fb923c', '#34d399'];
 
+/** '[sticker:mood]' marker → the mascot mood, or null. */
+export function stickerMoodOf(text: string | null): MascotMood | null {
+  const m = text?.match(/^\[sticker:(\w+)\]$/);
+  if (!m) return null;
+  const mood = m[1] as MascotMood;
+  return STICKER_MOODS.includes(mood) ? mood : null;
+}
+
 /** message that is ONLY 1-3 emoji → rendered jumbo, no bubble */
-function isJumbo(text: string): boolean {
+export function isJumbo(text: string): boolean {
   if (text.length > 12) return false;
   const m = text.trim().match(/\p{Extended_Pictographic}/gu);
   if (!m) return false;
@@ -266,6 +275,8 @@ interface ChatProps {
   onBack: () => void;
   refetchKey: number;
   jamAction: { label: string; run: () => void } | null;
+  /** friend is typing right now — fed by the app-wide private inbox */
+  peerTypingNow: boolean;
 }
 
 function timeLabel(iso: string): string {
@@ -385,33 +396,48 @@ function ImageViewer({
   );
 }
 
-/** picked image → data-url, capped so the encrypted payload fits the row */
-function fileToChatImage(file: File): Promise<string | null> {
+/** compress a data-url/file to a jpeg data-url under maxPx / maxBytes */
+function compressImage(
+  src: string,
+  maxPx: number,
+  maxBytes: number,
+  qualities: number[],
+): Promise<string | null> {
   return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 512;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve(null);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      for (const q of [0.72, 0.55, 0.4]) {
+      for (const q of qualities) {
         const out = canvas.toDataURL('image/jpeg', q);
-        if (out.length <= 110_000) return resolve(out);
+        if (out.length <= maxBytes) return resolve(out);
       }
       resolve(null);
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-    img.src = url;
+    img.onerror = () => resolve(null);
+    img.src = src;
   });
+}
+
+/** picked image → data-url. Storage-era budget: sharp 1280px, ~900KB. */
+export function fileToChatImage(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    compressImage(url, 1280, 900_000, [0.85, 0.72, 0.55]).then((out) => {
+      URL.revokeObjectURL(url);
+      resolve(out);
+    });
+  });
+}
+
+/** legacy inline budget — used only when the Storage upload fails (offline) */
+function shrinkForInline(dataUrl: string): Promise<string | null> {
+  return compressImage(dataUrl, 512, 110_000, [0.72, 0.55, 0.4]);
 }
 
 function AvatarSm({ friend }: { friend: FriendEntry }) {
@@ -499,6 +525,7 @@ export function ChatView({
   onBack,
   refetchKey,
   jamAction,
+  peerTypingNow,
 }: ChatProps) {
   const { pushToast } = useToast();
   const [messages, setMessages] = useState<DecryptedMessage[] | null>(
@@ -513,7 +540,7 @@ export function ChatView({
   const [editing, setEditing] = useState<DecryptedMessage | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
-  const [peerTyping, setPeerTyping] = useState(false);
+  const peerTyping = peerTypingNow;
   const [clipOpen, setClipOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [viewImg, setViewImg] = useState<string | null>(null);
@@ -599,11 +626,14 @@ export function ChatView({
           fr.onload = () => res(String(fr.result));
           fr.readAsDataURL(blob);
         });
-        if (dataUrl.length > 110_000) {
+        // Storage first; inline data-url only as the offline fallback
+        let body = await media.uploadEncrypted(dataUrl);
+        if (!body && dataUrl.length <= 110_000) body = dataUrl;
+        if (!body) {
           onError(t('msg.voice.toobig'));
           return;
         }
-        const r = await chat.sendMessage(friend.userId, 'voice', dataUrl);
+        const r = await chat.sendMessage(friend.userId, 'voice', body);
         if (r === 'ok') reload();
         else handleSendError(r);
       };
@@ -613,7 +643,7 @@ export function ChatView({
       setRecSec(0);
       recTimerRef.current = window.setInterval(() => {
         setRecSec((s) => {
-          if (s + 1 >= 15) stopRecording(); // hard cap keeps the E2E payload small
+          if (s + 1 >= 60) stopRecording(); // Storage-era cap: 1 minute
           return s + 1;
         });
       }, 1000);
@@ -660,6 +690,17 @@ export function ChatView({
     chat
       .listConversation(friend.userId)
       .then(async (msgs) => {
+        // Storage-backed media → decrypted data-urls BEFORE paint (per-path
+        // cache makes this free on re-renders and chat switches)
+        await Promise.all(
+          msgs
+            .filter((m) => (m.kind === 'image' || m.kind === 'voice') && media.isMediaMarker(m.text))
+            .map(async (m) => {
+              const marker = m.text as string;
+              m.mediaMarker = marker;
+              m.text = await media.resolveMedia(marker);
+            }),
+        );
         // decode every image BEFORE the first paint — an <img> without known
         // dimensions grows after layout and each growth was a visible "bump"
         // while the view re-anchored to the bottom
@@ -747,17 +788,14 @@ export function ChatView({
   }
 
   useEffect(() => {
-    const chan = chat.joinTyping(myUserId, friend.userId, () => {
-      setPeerTyping(true);
-      if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = window.setTimeout(() => setPeerTyping(false), 3000);
-    });
+    // send-only: my keystrokes go to the FRIEND's private inbox; their typing
+    // reaches me through the app-wide inbox subscription (peerTypingNow prop)
+    const chan = chat.joinTyping(myUserId, friend.userId);
     typingChanRef.current = chan;
     return () => {
       chan.close();
       typingChanRef.current = null;
       if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
-      setPeerTyping(false);
     };
   }, [myUserId, friend.userId]);
 
@@ -772,7 +810,16 @@ export function ChatView({
     if (pendingImg) {
       const img = pendingImg;
       setPendingImg(null);
-      const ri = await chat.sendMessage(friend.userId, 'image', img);
+      // media lives in Storage (E2E-encrypted blob); the row only carries a
+      // tiny marker. Upload failure falls back to the old inline data-url.
+      let body = await media.uploadEncrypted(img);
+      if (!body) body = await shrinkForInline(img);
+      if (!body) {
+        setPendingImg(img);
+        onError(t('msg.img.toobig'));
+        return;
+      }
+      const ri = await chat.sendMessage(friend.userId, 'image', body);
       if (ri === 'ok') reload();
       else {
         setPendingImg(img); // put it back so nothing is lost
@@ -832,8 +879,10 @@ export function ChatView({
     }
     setConfirmDelete(null);
     setMenuFor(null);
+    const doomed = messages?.find((m) => m.id === id);
     const err = await chat.deleteMessage(id);
     if (err) onError(err);
+    else if (doomed?.mine && doomed.mediaMarker) media.deleteMedia(doomed.mediaMarker);
     reload();
   }
 
@@ -1630,8 +1679,8 @@ export function ChatView({
             onClick={stopRecording}
             className="flex h-11 shrink-0 items-center gap-2 rounded-xl border-2 border-danger bg-danger/15 px-3 font-mono text-xs font-extrabold tabular-nums text-danger"
           >
-            <span className="h-2 w-2 animate-pulse-dot rounded-full bg-danger" /> 0:
-            {String(recSec).padStart(2, '0')} ■
+            <span className="h-2 w-2 animate-pulse-dot rounded-full bg-danger" />{' '}
+            {fmtVoiceSec(recSec)} ■
           </button>
         ) : (
           !draft.trim() &&
