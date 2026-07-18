@@ -21,6 +21,8 @@ interface FriendsBarProps {
   typingIds: Set<string>;
   /** members of MY running jam (me included), null when not in a jam */
   jamMembers: JamMemberView[] | null;
+  /** rail animates to zero width (Friends tab open) instead of unmounting */
+  hidden?: boolean;
 }
 
 function Chevron({ left }: { left: boolean }) {
@@ -49,6 +51,7 @@ export function FriendsBar({
   unread,
   typingIds,
   jamMembers,
+  hidden = false,
 }: FriendsBarProps) {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('friends-bar-collapsed') === '1',
@@ -65,32 +68,41 @@ export function FriendsBar({
   const anyLive = state.friends.some((f) => social.isLive(soc.presence.get(f.userId)));
   const anyUnread = Object.values(unread).some((n) => n > 0);
 
-  if (collapsed) {
-    return (
-      <aside className="flex w-7 shrink-0 flex-col items-center border-l border-border pt-2">
-        <button
-          type="button"
-          onClick={toggle}
-          title={t('fr.bar.expand')}
-          className="relative flex h-9 w-5 items-center justify-center rounded-md text-text-faint hover:bg-surface-hover hover:text-text"
-        >
-          <Chevron left />
-          {(anyLive || anyUnread || state.incoming.length > 0) && (
-            <span
-              className={`absolute -top-0.5 right-0 h-2 w-2 rounded-full ${
-                anyUnread || state.incoming.length > 0
-                  ? 'bg-warn'
-                  : 'animate-pulse-dot bg-accent'
-              }`}
-            />
-          )}
-        </button>
-      </aside>
-    );
-  }
-
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-l border-border">
+    // single animated rail: width tweens between hidden (0) / collapsed (7) /
+    // expanded (64) — no more instant jumps when collapsing or changing tabs
+    <aside
+      className={`flex shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out ${
+        hidden
+          ? 'w-0 border-l-0'
+          : collapsed
+            ? 'w-7 border-l border-border'
+            : 'w-64 border-l border-border'
+      }`}
+    >
+      {collapsed ? (
+        <div className="flex w-7 shrink-0 flex-col items-center pt-2">
+          <button
+            type="button"
+            onClick={toggle}
+            title={t('fr.bar.expand')}
+            className="relative flex h-9 w-5 items-center justify-center rounded-md text-text-faint hover:bg-surface-hover hover:text-text"
+          >
+            <Chevron left />
+            {(anyLive || anyUnread || state.incoming.length > 0) && (
+              <span
+                className={`absolute -top-0.5 right-0 h-2 w-2 rounded-full ${
+                  anyUnread || state.incoming.length > 0
+                    ? 'bg-warn'
+                    : 'animate-pulse-dot bg-accent'
+                }`}
+              />
+            )}
+          </button>
+        </div>
+      ) : (
+        // fixed inner width so text doesn't reflow while the rail tweens
+        <div className="flex h-full w-64 shrink-0 flex-col">
       <div className="flex items-center justify-between px-3 pb-1 pt-3">
         <div className="flex items-center gap-1">
           <button
@@ -230,6 +242,8 @@ export function FriendsBar({
           + {t('fr.add.cta')}
         </button>
       </div>
+        </div>
+      )}
     </aside>
   );
 }

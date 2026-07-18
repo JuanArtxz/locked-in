@@ -2282,8 +2282,9 @@ function AppShell() {
         {tab === 'ranking' && <RankingPage soc={social} signedIn={signedIn} />}
         {tab === 'settings' && <SettingsScreen settingsHook={settingsHook} onError={onError} />}
       </main>
-      {signedIn && tab !== 'friends' && settingsHook.settings?.friends_bar_enabled !== false && (
+      {signedIn && settingsHook.settings?.friends_bar_enabled !== false && (
         <FriendsBar
+          hidden={tab === 'friends'}
           social={social}
           onOpenFriends={() => setTab('friends')}
           onOpenChat={openChatShortcut}
