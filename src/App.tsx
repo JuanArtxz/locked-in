@@ -976,17 +976,32 @@ function AppShell() {
     return chatLib.subscribeReactions(() => setChatRefetchKey((k) => k + 1));
   }, [signedIn]);
 
-  // who's typing TO me right now — shown on friend rows, not just in the chat
+  // who's typing TO me right now — shown on friend rows, not just in the chat.
+  // Group keystrokes arrive on the same private inbox tagged with the group id
+  // and land in their own per-group map ("@x is typing" inside the group view).
   const [typingMap, setTypingMap] = useState<Map<string, number>>(() => new Map());
+  const [groupTypingMap, setGroupTypingMap] = useState<Map<number, Map<string, number>>>(
+    () => new Map(),
+  );
   useEffect(() => {
     const myId = social.state?.me?.user_id;
     if (!signedIn || !myId) return;
-    const unsub = chatLib.subscribeTypingAll(myId, (fromId) => {
-      setTypingMap((m) => new Map(m).set(fromId, Date.now()));
+    const unsub = chatLib.subscribeTypingAll(myId, (fromId, groupId) => {
+      if (groupId !== undefined) {
+        setGroupTypingMap((m) => {
+          const next = new Map(m);
+          const inner = new Map(next.get(groupId) ?? []);
+          inner.set(fromId, Date.now());
+          next.set(groupId, inner);
+          return next;
+        });
+      } else {
+        setTypingMap((m) => new Map(m).set(fromId, Date.now()));
+      }
     });
     const iv = window.setInterval(() => {
+      const now = Date.now();
       setTypingMap((m) => {
-        const now = Date.now();
         let changed = false;
         const next = new Map(m);
         for (const [k, ts] of next) {
@@ -994,6 +1009,22 @@ function AppShell() {
             next.delete(k);
             changed = true;
           }
+        }
+        return changed ? next : m;
+      });
+      setGroupTypingMap((m) => {
+        let changed = false;
+        const next = new Map(m);
+        for (const [gid, inner] of next) {
+          const pruned = new Map(inner);
+          for (const [k, ts] of pruned) {
+            if (now - ts > 3000) {
+              pruned.delete(k);
+              changed = true;
+            }
+          }
+          if (pruned.size === 0) next.delete(gid);
+          else next.set(gid, pruned);
         }
         return changed ? next : m;
       });
@@ -2193,6 +2224,7 @@ function AppShell() {
             onSendJam={sendJam}
             unread={unreadMsgs}
             typingIds={typingIds}
+            groupTyping={groupTypingMap}
             chatRefetchKey={chatRefetchKey}
             onChatOpened={onChatOpened}
             openChatWith={openChatWith}

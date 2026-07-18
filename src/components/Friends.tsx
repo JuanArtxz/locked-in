@@ -36,6 +36,8 @@ interface FriendsProps {
   unread: Record<string, number>;
   /** friend userIds typing to me right now */
   typingIds: Set<string>;
+  /** per-group live typing (groupId → userId → last keystroke ts) */
+  groupTyping: Map<number, Map<string, number>>;
   chatRefetchKey: number;
   onChatOpened: (friendUserId: string | null) => void;
   openChatWith: string | null;
@@ -601,6 +603,7 @@ export function FriendsPage({
   onSendJam,
   unread,
   typingIds,
+  groupTyping,
   chatRefetchKey,
   onChatOpened,
   openChatWith,
@@ -1486,6 +1489,7 @@ export function FriendsPage({
               friends={state.friends}
               isLive={(uid) => social.isLive(soc.presence.get(uid))}
               refetchKey={groupsHook.tick}
+              typing={groupTyping.get(openGroupSummary.group.id)}
               onError={onError}
               onBack={() => setGroupOpen(null)}
               meInJam={activeGroupJamId === openGroupSummary.group.id}

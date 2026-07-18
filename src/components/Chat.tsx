@@ -218,7 +218,7 @@ export function VoicePlayer({ src, mine }: { src: string; mine: boolean }) {
 
 const REACTION_SET = ['👍', '❤️', '😂', '🔥', '👀'];
 export const STICKER_MOODS: MascotMood[] = ['happy', 'hyped', 'focus', 'relax', 'sleep', 'sad', 'angry'];
-const CHAT_THEMES = ['#d4ff3f', '#7dd3fc', '#a78bfa', '#f472b6', '#fb923c', '#34d399'];
+export const CHAT_THEMES = ['#d4ff3f', '#7dd3fc', '#a78bfa', '#f472b6', '#fb923c', '#34d399'];
 
 /** '[sticker:mood]' marker → the mascot mood, or null. */
 export function stickerMoodOf(text: string | null): MascotMood | null {
@@ -318,7 +318,7 @@ export function DaySeparator({ iso }: { iso: string }) {
 }
 
 /** Fullscreen image viewer: Esc / click-outside closes; download + copy. */
-function ImageViewer({
+export function ImageViewer({
   src,
   onClose,
   onToast,

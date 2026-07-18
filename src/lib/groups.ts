@@ -58,12 +58,20 @@ export interface GroupMessage {
   /** decrypted text / resolved media data-url; null = this device can't open it */
   body: string | null;
   created_at: string;
+  edited_at: string | null;
   mine: boolean;
   senderName: string;
   reply_to: number | null;
   /** original storage marker for media rows (delete path) */
   mediaMarker?: string;
   reactions: { emoji: string; count: number; mine: boolean }[];
+}
+
+/** author-only, text-only, same 2-minute window the server enforces */
+export function canEditGroupMsg(m: GroupMessage): boolean {
+  return (
+    m.mine && m.kind === 'text' && Date.now() - new Date(m.created_at).getTime() < 2 * 60_000
+  );
 }
 
 async function attachProfiles(
@@ -363,6 +371,7 @@ interface RawGroupMsg {
   kind: GroupMessageKind;
   body: string;
   created_at: string;
+  edited_at: string | null;
   reply_to: number | null;
 }
 
@@ -431,6 +440,7 @@ export async function listGroupMessages(groupId: number, limit = 80): Promise<Gr
         kind: r.kind,
         body,
         created_at: r.created_at,
+        edited_at: r.edited_at ?? null,
         mine: r.sender === user.id,
         senderName: names.get(r.sender) ?? '???',
         reply_to: r.reply_to,
@@ -471,6 +481,17 @@ export async function sendGroupMessage(
 
 export async function deleteGroupMessage(id: number): Promise<void> {
   await supabase.from('group_messages').delete().eq('id', id);
+}
+
+/** Replaces the body (author-only; RLS rejects edits older than 2 minutes). */
+export async function editGroupMessage(id: number, newText: string): Promise<string | null> {
+  const clean = cleanProfanity(newText).trim().slice(0, 2000);
+  if (!clean) return null;
+  const { error } = await supabase
+    .from('group_messages')
+    .update({ body: clean, edited_at: new Date().toISOString() })
+    .eq('id', id);
+  return error ? error.message : null;
 }
 
 /** Adds/removes my emoji on a group message. */

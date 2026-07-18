@@ -1590,3 +1590,18 @@ $$;
 drop trigger if exists report_guard_t on public.reports;
 create trigger report_guard_t before insert on public.reports
   for each row execute function public.report_guard();
+-- ========== v0.45: group message edits (DM parity) ==========
+
+-- author-only, within 2 minutes (server-enforced), marked as edited
+alter table public.group_messages add column if not exists edited_at timestamptz;
+
+drop policy if exists gmsg_update on public.group_messages;
+create policy gmsg_update on public.group_messages
+  for update to authenticated
+  using (auth.uid() = sender and created_at > now() - interval '2 minutes')
+  with check (auth.uid() = sender);
+
+-- only the body and the edited stamp are writable — sender/group/kind/time
+-- stay locked, so an edit can't move a message or forge authorship
+revoke update on public.group_messages from authenticated;
+grant update (body, edited_at) on public.group_messages to authenticated;

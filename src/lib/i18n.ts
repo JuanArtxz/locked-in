@@ -622,6 +622,9 @@ const dict: Record<string, { pt: string; en: string }> = {
     pt: 'não deu pra salvar teus dados na nuvem ({0}) — nada foi apagado. Verifica a conexão e tenta de novo.',
     en: "couldn't save your data to the cloud ({0}) — nothing was deleted. Check your connection and try again.",
   },
+  'grp.typing.one': { pt: '@{0} está digitando…', en: '@{0} is typing…' },
+  'grp.typing.two': { pt: '@{0} e @{1} estão digitando…', en: '@{0} and @{1} are typing…' },
+  'grp.typing.many': { pt: '{0} pessoas estão digitando…', en: '{0} people are typing…' },
   'rank.guest.title': { pt: 'ranking precisa de conta', en: 'ranking needs an account' },
   'rank.guest.body': {
     pt: 'cria uma conta pra competir com teus amigos e ver os gráficos da galera',

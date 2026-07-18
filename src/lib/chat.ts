@@ -228,19 +228,63 @@ export function joinTyping(
   };
 }
 
-/** MY private inbox: fires with the friendId whenever a friend types to me. */
-export function subscribeTypingAll(myId: string, onTyping: (fromId: string) => void): () => void {
+/**
+ * MY private inbox: fires with the sender whenever someone types to me.
+ * DM keystrokes carry only `from`; group keystrokes also carry `group`, so
+ * one inbox serves both indicators.
+ */
+export function subscribeTypingAll(
+  myId: string,
+  onTyping: (fromId: string, groupId?: number) => void,
+): () => void {
   const channel = supabase.channel(`ubox:${myId}`, {
     config: { broadcast: { self: false }, private: true },
   });
   channel
     .on('broadcast', { event: 'typing' }, (p) => {
-      const pay = p.payload as { from?: string } | undefined;
-      if (pay?.from) onTyping(pay.from);
+      const pay = p.payload as { from?: string; group?: number } | undefined;
+      if (pay?.from) onTyping(pay.from, typeof pay.group === 'number' ? pay.group : undefined);
     })
     .subscribe();
   return () => {
     supabase.removeChannel(channel).catch(() => {});
+  };
+}
+
+/**
+ * Group typing: fan my keystrokes into EVERY groupmate's private inbox,
+ * tagged with the group id (RLS: groupmates may send to each other's ubox).
+ */
+export function joinGroupTyping(
+  myId: string,
+  groupId: number,
+  memberIds: string[],
+): TypingChannel {
+  const channels = memberIds
+    .filter((id) => id !== myId)
+    .map((id) =>
+      supabase.channel(`ubox:${id}`, {
+        config: { broadcast: { self: false }, private: true },
+      }),
+    );
+  for (const ch of channels) ch.subscribe();
+  let last = 0;
+  return {
+    sendTyping: () => {
+      const now = Date.now();
+      if (now - last < 1500) return; // throttle keystrokes
+      last = now;
+      for (const ch of channels) {
+        ch.send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: { from: myId, group: groupId },
+        }).catch(() => {});
+      }
+    },
+    close: () => {
+      for (const ch of channels) supabase.removeChannel(ch).catch(() => {});
+    },
   };
 }
 

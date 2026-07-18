@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as groups from '../lib/groups';
 import type { GroupMessage, GroupSummary } from '../lib/groups';
+import * as chat from '../lib/chat';
+import type { TypingChannel } from '../lib/chat';
 import * as media from '../lib/media';
 import { cleanProfanity } from '../lib/filter';
 import { dateLocale, t } from '../lib/i18n';
@@ -12,6 +14,9 @@ import {
   HeadphonesIcon,
   ImageIcon,
   MicIcon,
+  PaletteIcon,
+  PencilIcon,
+  PinIcon,
   ReplyIcon,
   SendIcon,
   SmileIcon,
@@ -19,7 +24,9 @@ import {
   TrashIcon,
 } from './Icons';
 import {
+  CHAT_THEMES,
   DaySeparator,
+  ImageViewer,
   VoicePlayer,
   fileToChatImage,
   fmtVoiceSec,
@@ -30,6 +37,7 @@ import {
 import { Mascot } from './Mascot';
 import type { MascotMood } from './Mascot';
 import { ConfirmModal } from './Confirm';
+import { useToast } from '../hooks/useToast';
 
 const GROUP_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮', '😢'];
 const GROUP_EMOJIS = [
@@ -37,6 +45,23 @@ const GROUP_EMOJIS = [
   '👍', '👎', '👏', '🙏', '💪', '🔥', '❤️', '💯', '✨', '🎉',
   '👀', '🤝', '🫡', '☕', '🚀', '⚡', '🧠', '📚', '⏰', '🎯',
 ];
+
+const GROUP_PINS_KEY = 'group-pins'; // { [groupId]: messageId }
+function groupPinsMap(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(GROUP_PINS_KEY) ?? '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+const GROUP_THEME_KEY = 'group-themes'; // { [groupId]: hex }
+function groupThemesMap(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(GROUP_THEME_KEY) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
 
 function timeLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
@@ -180,6 +205,8 @@ interface GroupViewProps {
   onJoinJam: (task: string, startedAtIso: string, pomo: string | null) => void;
   onLeaveJam: () => void;
   meInJam: boolean;
+  /** groupmates typing in THIS group right now (userId → last keystroke ts) */
+  typing?: Map<string, number>;
 }
 
 export function GroupView({
@@ -194,6 +221,7 @@ export function GroupView({
   onJoinJam,
   onLeaveJam,
   meInJam,
+  typing,
 }: GroupViewProps) {
   const { group, members, meAdmin } = summary;
   const [messages, setMessages] = useState<GroupMessage[] | null>(null);
@@ -215,7 +243,7 @@ export function GroupView({
     userId: string;
     username: string;
   } | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const { pushToast } = useToast();
 
   const reload = useCallback(() => {
     groups
@@ -225,9 +253,92 @@ export function GroupView({
   }, [group.id, onError]);
 
   useEffect(reload, [reload, refetchKey]);
+
+  // ---- DM-parity scroll: column-reverse pins the view to the bottom
+  // natively; scrolling up + new incoming shows the "↓ N new" catcher ----
+  const listRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const lastMsgIdRef = useRef<number | null>(null);
+  const [newCount, setNewCount] = useState(0);
+  const msgRefs = useRef(new Map<number, HTMLDivElement>());
+  const [flashId, setFlashId] = useState<number | null>(null);
+
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = listRef.current;
+    if (!el) return;
+    if (smooth) el.scrollTo({ top: 0, behavior: 'smooth' });
+    else el.scrollTop = 0;
+  }, []);
+
+  useLayoutEffect(() => {
+    const last = messages?.[messages.length - 1];
+    const lastId = last?.id ?? null;
+    const grew = lastId !== null && lastId !== lastMsgIdRef.current;
+    lastMsgIdRef.current = lastId;
+    if (atBottomRef.current || (grew && last?.mine)) {
+      if (grew && last?.mine) scrollToBottom();
+      setNewCount(0);
+    } else if (grew && last && !last.mine) {
+      setNewCount((c) => c + 1);
+    }
+  }, [messages, scrollToBottom]);
+
+  function onListScroll() {
+    const el = listRef.current;
+    if (!el) return;
+    const atBottom = el.scrollTop > -80;
+    atBottomRef.current = atBottom;
+    if (atBottom) setNewCount(0);
+  }
+
+  function jumpToMessage(id: number) {
+    const el = msgRefs.current.get(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlashId(id);
+    window.setTimeout(() => setFlashId((f) => (f === id ? null : f)), 1400);
+  }
+
+  // ---- pin + theme (localStorage, per group — same model as the DM chat) ----
+  const [pinId, setPinId] = useState<number | null>(() => groupPinsMap()[group.id] ?? null);
+  function setPin(id: number | null) {
+    const map = groupPinsMap();
+    if (id === null) delete map[group.id];
+    else map[group.id] = id;
+    localStorage.setItem(GROUP_PINS_KEY, JSON.stringify(map));
+    setPinId(id);
+  }
+  const [theme, setTheme] = useState<string | null>(() => groupThemesMap()[group.id] ?? null);
+  const [themeOpen, setThemeOpen] = useState(false);
+  function setGroupTheme(hex: string | null) {
+    const map = groupThemesMap();
+    if (hex === null) delete map[group.id];
+    else map[group.id] = hex;
+    localStorage.setItem(GROUP_THEME_KEY, JSON.stringify(map));
+    setTheme(hex);
+    setThemeOpen(false);
+  }
+
+  // ---- live "who's typing" (fed by the app-wide private inbox) ----
+  const typingNames = [...(typing?.entries() ?? [])]
+    .filter(([uid, ts]) => uid !== myUserId && Date.now() - ts < 3000)
+    .map(([uid]) => members.find((mm) => mm.user_id === uid)?.username)
+    .filter((u): u is string => !!u);
+  const typingChanRef = useRef<TypingChannel | null>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages]);
+    const chan = chat.joinGroupTyping(
+      myUserId,
+      group.id,
+      members.map((mm) => mm.user_id),
+    );
+    typingChanRef.current = chan;
+    return () => {
+      typingChanRef.current = null;
+      chan.close();
+    };
+    // members roster changes are rare; key on the ids actually present
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myUserId, group.id, members.map((mm) => mm.user_id).join(',')]);
 
   // @mention highlight — my own name glows in group messages
   const myName = members.find((mm) => mm.user_id === myUserId)?.username ?? '';
@@ -262,7 +373,12 @@ export function GroupView({
   const [pendingImg, setPendingImg] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<GroupMessage | null>(null);
   const [reactFor, setReactFor] = useState<number | null>(null);
+  const [menuFor, setMenuFor] = useState<number | null>(null);
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
+  const [editing, setEditing] = useState<GroupMessage | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [viewImg, setViewImg] = useState<string | null>(null);
+  const [micAsk, setMicAsk] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -277,12 +393,24 @@ export function GroupView({
     const onDown = (e: MouseEvent) => {
       if ((e.target as Element | null)?.closest?.('[data-pop]')) return;
       setReactFor(null);
+      setMenuFor(null);
+      setThemeOpen(false);
       setStickerOpen(false);
       setEmojiOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
+
+  async function saveEdit() {
+    if (!editing) return;
+    const text = editDraft.trim();
+    if (!text) return;
+    const err = await groups.editGroupMessage(editing.id, text);
+    setEditing(null);
+    if (err) onError(err);
+    reload();
+  }
 
   async function send() {
     if (pendingImg) {
@@ -334,6 +462,15 @@ export function GroupView({
   }
 
   async function startRecording() {
+    // first time: our own explainer BEFORE the raw WebView2 permission prompt
+    if (!localStorage.getItem('mic-explained')) {
+      setMicAsk(true);
+      return;
+    }
+    await reallyStartRecording();
+  }
+
+  async function reallyStartRecording() {
     try {
       const inputId = localStorage.getItem('audio-input-id');
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -400,10 +537,18 @@ export function GroupView({
     reload();
   }
 
-  async function removeMsg(m: GroupMessage) {
+  // two-step inline confirm inside the ⋯ menu (same pattern as the DM chat)
+  async function removeMsg(id: number) {
+    if (confirmDel !== id) {
+      setConfirmDel(id);
+      window.setTimeout(() => setConfirmDel((c) => (c === id ? null : c)), 3000);
+      return;
+    }
     setConfirmDel(null);
-    await groups.deleteGroupMessage(m.id);
-    if (m.mine && m.mediaMarker) media.deleteMedia(m.mediaMarker);
+    setMenuFor(null);
+    const doomed = messages?.find((x) => x.id === id);
+    await groups.deleteGroupMessage(id);
+    if (doomed?.mine && doomed.mediaMarker) media.deleteMedia(doomed.mediaMarker);
     reload();
   }
 
@@ -511,7 +656,19 @@ export function GroupView({
   }
 
   return (
-    <div className="animate-fade-in flex h-full min-h-0 flex-col">
+    <div
+      className="animate-fade-in relative flex h-full min-h-0 flex-col"
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith('image/'));
+        if (file) {
+          e.preventDefault();
+          stageImage(file);
+        }
+      }}
+    >
       {/* header */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -550,13 +707,45 @@ export function GroupView({
             </div>
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowMembers((s) => !s)}
-          className="rounded-lg p-1.5 text-text-dim hover:bg-surface-hover hover:text-text"
-        >
-          <DotsIcon size={16} />
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div className="relative" data-pop>
+            <button
+              type="button"
+              title={t('msg.theme')}
+              onClick={() => setThemeOpen((o) => !o)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-faint hover:bg-surface-hover hover:text-text"
+            >
+              <PaletteIcon size={15} className={theme ? 'text-accent' : undefined} />
+            </button>
+            {themeOpen && (
+              <div className="animate-scale-in absolute right-0 top-10 z-30 flex gap-1.5 rounded-xl border-2 border-border-strong bg-surface p-2 shadow-2xl shadow-black/50">
+                {CHAT_THEMES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setGroupTheme(c)}
+                    className={`h-6 w-6 rounded-full border-2 ${theme === c ? 'border-text' : 'border-transparent'}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setGroupTheme(null)}
+                  className="px-1 text-[10px] font-bold text-text-faint hover:text-text"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowMembers((s) => !s)}
+            className="rounded-lg p-1.5 text-text-dim hover:bg-surface-hover hover:text-text"
+          >
+            <DotsIcon size={16} />
+          </button>
+        </div>
       </div>
 
       {/* jam banner */}
@@ -679,8 +868,45 @@ export function GroupView({
         </div>
       )}
 
-      {/* messages */}
-      <div className="chat-backdrop min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      {/* pinned message bar */}
+      {pinId !== null &&
+        (() => {
+          const pm = messages?.find((x) => x.id === pinId);
+          if (!pm) return null;
+          return (
+            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface/70 px-4 py-1.5">
+              <PinIcon size={13} className="shrink-0 text-accent" />
+              <button
+                type="button"
+                onClick={() => jumpToMessage(pm.id)}
+                className="min-w-0 flex-1 truncate text-left text-[12px] font-semibold text-text-dim hover:text-text"
+              >
+                <span className="font-bold">@{pm.senderName}</span>{' '}
+                {pm.kind === 'image'
+                  ? t('msg.kind.image')
+                  : pm.kind === 'voice'
+                    ? t('msg.kind.voice')
+                    : (pm.body ?? '🔒')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPin(null)}
+                className="shrink-0 px-1 text-xs font-bold text-text-faint hover:text-text"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })()}
+
+      {/* messages — column-reverse pins the view to the bottom natively */}
+      <div
+        ref={listRef}
+        onScroll={onListScroll}
+        style={{ scrollbarGutter: 'stable' }}
+        className="chat-backdrop flex min-h-0 flex-1 flex-col-reverse overflow-y-auto px-5 py-4"
+      >
+      <div>
         {messages === null && (
           <div className="flex justify-center py-8">
             <span className="skeleton h-5 w-40">.</span>
@@ -716,13 +942,18 @@ export function GroupView({
             );
           }
           const quoted = m.reply_to ? messages.find((x) => x.id === m.reply_to) : null;
+          const isEditing = editing?.id === m.id;
           return (
             <div key={m.id}>
               {newDay && <DaySeparator iso={m.created_at} />}
               <div
+                ref={(el) => {
+                  if (el) msgRefs.current.set(m.id, el);
+                  else msgRefs.current.delete(m.id);
+                }}
                 className={`group/gmsg flex ${m.mine ? 'justify-end' : 'justify-start'} ${
                   firstOfGroup ? 'mt-4 animate-msg-in' : 'mt-1'
-                }`}
+                } ${flashId === m.id ? 'flash-msg rounded-2xl' : ''}`}
               >
                 <div className={`relative max-w-[80%] ${m.mine ? 'items-end' : 'items-start'}`}>
                   {!m.mine && firstOfGroup && (
@@ -730,36 +961,83 @@ export function GroupView({
                       @{m.senderName}
                     </div>
                   )}
-                  {/* hover toolbar: react / reply / delete-own */}
+                  {/* hover toolbar: react / reply / ⋯ */}
                   <div
                     data-pop
                     className={`absolute -top-3 z-10 hidden items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5 shadow-lg group-hover/gmsg:flex ${
                       m.mine ? 'right-1' : 'left-1'
-                    }`}
+                    } ${reactFor === m.id || menuFor === m.id ? '!flex' : ''}`}
                   >
                     <button
                       type="button"
-                      onClick={() => setReactFor(reactFor === m.id ? null : m.id)}
+                      title={t('msg.react')}
+                      onClick={() => {
+                        setMenuFor(null);
+                        setReactFor(reactFor === m.id ? null : m.id);
+                      }}
                       className="rounded-md p-1 text-text-dim hover:bg-surface-hover hover:text-text"
                     >
                       <SmileIcon size={13} />
                     </button>
                     <button
                       type="button"
+                      title={t('msg.reply')}
                       onClick={() => setReplyTo(m)}
                       className="rounded-md p-1 text-text-dim hover:bg-surface-hover hover:text-text"
                     >
                       <ReplyIcon size={13} />
                     </button>
-                    {m.mine && (
+                    <div className="relative">
                       <button
                         type="button"
-                        onClick={() => setConfirmDel(m.id)}
-                        className="rounded-md p-1 text-text-dim hover:bg-danger/20 hover:text-danger"
+                        onClick={() => {
+                          setReactFor(null);
+                          setMenuFor(menuFor === m.id ? null : m.id);
+                        }}
+                        className="rounded-md p-1 text-text-dim hover:bg-surface-hover hover:text-text"
                       >
-                        <TrashIcon size={13} />
+                        <DotsIcon size={13} />
                       </button>
-                    )}
+                      {menuFor === m.id && (
+                        <div className="animate-scale-in absolute right-0 top-7 z-20 w-36 rounded-xl border-2 border-border-strong bg-surface p-1 shadow-xl shadow-black/50">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuFor(null);
+                              setPin(pinId === m.id ? null : m.id);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold text-text hover:bg-surface-hover"
+                          >
+                            <PinIcon size={13} /> {pinId === m.id ? t('msg.unpin') : t('msg.pin')}
+                          </button>
+                          {groups.canEditGroupMsg(m) && !stickerMoodOf(m.body) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuFor(null);
+                                setEditing(m);
+                                setEditDraft(m.body ?? '');
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold text-text hover:bg-surface-hover"
+                            >
+                              <PencilIcon /> {t('msg.edit')}
+                            </button>
+                          )}
+                          {m.mine && (
+                            <button
+                              type="button"
+                              onClick={() => removeMsg(m.id)}
+                              className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold hover:bg-surface-hover ${
+                                confirmDel === m.id ? 'text-danger' : 'text-text'
+                              }`}
+                            >
+                              <TrashIcon />{' '}
+                              {confirmDel === m.id ? t('misc.sure') : t('msg.delete')}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {reactFor === m.id && (
                     <div
@@ -781,9 +1059,12 @@ export function GroupView({
                     </div>
                   )}
                   {quoted && (
-                    <div
-                      className={`mb-0.5 max-w-full truncate rounded-lg border-l-4 border-accent bg-surface-hover px-2.5 py-1 text-[11px] text-text-dim ${
-                        m.mine ? 'text-right' : ''
+                    <button
+                      type="button"
+                      onClick={() => jumpToMessage(quoted.id)}
+                      title={t('msg.jump')}
+                      className={`mb-0.5 block max-w-full truncate rounded-lg border-l-4 border-accent bg-surface-hover px-2.5 py-1 text-[11px] text-text-dim transition-colors hover:bg-surface ${
+                        m.mine ? 'ml-auto text-right' : 'text-left'
                       }`}
                     >
                       <span className="font-bold">@{quoted.senderName}</span>{' '}
@@ -792,9 +1073,38 @@ export function GroupView({
                         : quoted.kind === 'voice'
                           ? t('msg.kind.voice')
                           : (quoted.body ?? '🔒').slice(0, 80)}
-                    </div>
+                    </button>
                   )}
-                  {m.kind === 'text' && stickerMoodOf(m.body) ? (
+                  {isEditing ? (
+                    <div className="bubble-shadow w-72 rounded-2xl border-2 border-accent bg-surface p-2">
+                      <input
+                        autoFocus
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit();
+                          if (e.key === 'Escape') setEditing(null);
+                        }}
+                        className="w-full bg-transparent px-2 py-1 text-sm font-medium text-text outline-none"
+                      />
+                      <div className="mt-1 flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setEditing(null)}
+                          className="rounded-lg px-2 py-1 text-[11px] font-bold text-text-faint hover:text-text"
+                        >
+                          {t('misc.cancel')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveEdit}
+                          className="rounded-lg bg-accent px-2.5 py-1 text-[11px] font-extrabold text-bg"
+                        >
+                          {t('bio.save')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : m.kind === 'text' && stickerMoodOf(m.body) ? (
                     <div className="px-1 py-1">
                       <Mascot mood={stickerMoodOf(m.body) as MascotMood} size={80} />
                     </div>
@@ -807,7 +1117,22 @@ export function GroupView({
                       }`}
                     >
                       {m.body ? (
-                        <img src={m.body} alt="" className="max-h-72 w-auto max-w-full" />
+                        <button
+                          type="button"
+                          onClick={() => setViewImg(m.body)}
+                          title={t('img.open')}
+                          className="block cursor-zoom-in"
+                        >
+                          <img
+                            src={m.body}
+                            alt=""
+                            className="img-fade block max-h-72 w-auto max-w-full"
+                            onLoad={(e) => {
+                              e.currentTarget.classList.add('img-loaded');
+                              if (atBottomRef.current) scrollToBottom();
+                            }}
+                          />
+                        </button>
                       ) : (
                         <div className="bg-surface px-4 py-3 text-xs italic text-text-faint">
                           🔒 {t('msg.undecryptable')}
@@ -819,6 +1144,7 @@ export function GroupView({
                       className={`bubble-shadow flex items-center gap-2 rounded-2xl border-2 border-border-strong px-3 py-2 ${
                         m.mine ? 'rounded-br-md bg-accent' : 'rounded-bl-md bg-surface'
                       }`}
+                      style={m.mine && theme ? { backgroundColor: theme } : undefined}
                     >
                       {m.body ? (
                         <VoicePlayer src={m.body} mine={m.mine} />
@@ -835,6 +1161,7 @@ export function GroupView({
                           ? `rounded-br-md bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'}`
                           : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
                       }`}
+                      style={m.mine && theme ? { backgroundColor: theme } : undefined}
                     >
                       {m.body === null ? (
                         <span className="text-xs italic opacity-70">
@@ -848,6 +1175,7 @@ export function GroupView({
                           m.mine ? 'text-bg/60' : 'text-text-faint'
                         }`}
                       >
+                        {m.edited_at ? `${t('msg.edited')} · ` : ''}
                         {timeLabel(m.created_at)}
                       </span>
                     </div>
@@ -880,8 +1208,89 @@ export function GroupView({
             </div>
           );
         })}
-        <div ref={bottomRef} />
+        {typingNames.length > 0 && (
+          <div className="animate-msg-in mt-4 flex items-end gap-2.5">
+            <div className="bubble-shadow rounded-2xl rounded-bl-md border-2 border-border-strong bg-surface px-4 py-3">
+              <span className="flex items-center gap-2">
+                <span className="flex gap-1">
+                  {[0, 1, 2].map((d) => (
+                    <span
+                      key={d}
+                      className="typing-dot h-1.5 w-1.5 rounded-full bg-text-dim"
+                      style={{ animationDelay: `${d * 180}ms` }}
+                    />
+                  ))}
+                </span>
+                <span className="text-[11px] font-bold text-text-dim">
+                  {typingNames.length === 1
+                    ? t('grp.typing.one', typingNames[0])
+                    : typingNames.length === 2
+                      ? t('grp.typing.two', typingNames[0], typingNames[1])
+                      : t('grp.typing.many', String(typingNames.length))}
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
+      </div>
+
+      {/* scrolled up + new incoming → floating catcher */}
+      {newCount > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            scrollToBottom(true);
+            setNewCount(0);
+          }}
+          className="animate-scale-in absolute bottom-24 left-1/2 z-20 -translate-x-1/2 rounded-full border-2 border-accent bg-surface px-4 py-1.5 text-xs font-extrabold text-accent shadow-xl shadow-black/50 hover:bg-accent-dim"
+        >
+          ↓ {newCount} {t('msg.newbelow')}
+        </button>
+      )}
+
+      {micAsk && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+          onMouseDown={(e) => e.target === e.currentTarget && setMicAsk(false)}
+        >
+          <div className="chunk animate-scale-in w-full max-w-sm p-6 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-dim">
+              <MicIcon size={26} className="text-accent" />
+            </div>
+            <h2 className="mt-3 text-lg font-extrabold text-text">{t('msg.mic.title')}</h2>
+            <p className="mt-1.5 text-sm font-medium leading-relaxed text-text-dim">
+              {t('msg.mic.body')}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.setItem('mic-explained', '1');
+                setMicAsk(false);
+                reallyStartRecording();
+              }}
+              className="chunk-btn chunk-btn-accent mt-4 w-full py-3 text-sm"
+            >
+              {t('msg.mic.cta')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMicAsk(false)}
+              className="mt-2 text-xs font-bold text-text-faint hover:text-text"
+            >
+              {t('misc.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {viewImg && (
+        <ImageViewer
+          src={viewImg}
+          onClose={() => setViewImg(null)}
+          onToast={(msg) => pushToast(msg, 'info')}
+        />
+      )}
 
       {/* composer */}
       <div className="shrink-0 border-t border-border">
@@ -998,7 +1407,10 @@ export function GroupView({
           </div>
           <input
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              typingChanRef.current?.sendTyping();
+            }}
             onPaste={(e) => {
               const file = Array.from(e.clipboardData.files).find((f) =>
                 f.type.startsWith('image/'),
@@ -1038,25 +1450,12 @@ export function GroupView({
             type="submit"
             disabled={!draft.trim() && !pendingImg}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-bg transition-all disabled:opacity-40"
+            style={theme ? { backgroundColor: theme } : undefined}
           >
             <SendIcon size={17} />
           </button>
         </form>
       </div>
-
-      {confirmDel !== null && (
-        <ConfirmModal
-          title={t('msg.delete')}
-          body={t('grp.msg.delete.body')}
-          confirmLabel={t('misc.delete')}
-          danger
-          onConfirm={() => {
-            const m = messages?.find((x) => x.id === confirmDel);
-            if (m) removeMsg(m);
-          }}
-          onClose={() => setConfirmDel(null)}
-        />
-      )}
 
       {/* start-jam modal: what to focus on + who's aboard */}
       {startingJam && (
