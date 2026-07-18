@@ -1141,7 +1141,7 @@ function AppShell() {
         else if (err) onError(err);
         else {
           pushToast(t('jam.sent.toast', f.username), 'info');
-          if (f.e2ePub) chatLib.sendMessage(f.userId, 'jam', task).catch(() => {});
+          chatLib.sendMessage(f.userId, 'jam', task).catch(() => {});
         }
       } else {
         const row = social.presence.get(f.userId);
@@ -1152,7 +1152,7 @@ function AppShell() {
         else if (err) onError(err);
         else {
           pushToast(t('jam.sent.toast', f.username), 'info');
-          if (f.e2ePub) chatLib.sendMessage(f.userId, 'jam', task).catch(() => {});
+          chatLib.sendMessage(f.userId, 'jam', task).catch(() => {});
         }
       }
     },

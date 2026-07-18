@@ -679,11 +679,9 @@ export function FriendsPage({
     setGroupOpen(id);
   }
 
+  // no key gate anymore — messages are plaintext + RLS since v0.46, so a
+  // fresh account (which never publishes a pubkey) chats like anyone else
   function openChat(f: FriendEntry) {
-    if (!f.e2ePub) {
-      onError(t('ver.old', f.username));
-      return;
-    }
     setViewing(null);
     setChatting(f.userId);
     onChatOpened(f.userId);
