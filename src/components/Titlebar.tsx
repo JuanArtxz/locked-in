@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { t } from '../lib/i18n';
+import { warmReload } from '../lib/reload';
 import type { SocialHook } from '../hooks/useSocial';
 
 export interface TabDef {
@@ -230,7 +231,7 @@ export function Titlebar({
                   type="button"
                   onClick={() => {
                     localStorage.removeItem('guest-mode');
-                    window.location.reload();
+                    warmReload();
                   }}
                   className="w-full rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-text hover:bg-surface-hover"
                 >

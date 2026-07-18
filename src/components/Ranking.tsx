@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { SocialHook } from '../hooks/useSocial';
 import * as social from '../lib/social';
 import { t } from '../lib/i18n';
+import { warmReload } from '../lib/reload';
 import { formatDurationShort } from '../lib/time';
 import { Mascot } from './Mascot';
 import { PersonIcon } from './Titlebar';
@@ -58,7 +59,7 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
           type="button"
           onClick={() => {
             localStorage.removeItem('guest-mode');
-            window.location.reload();
+            warmReload();
           }}
           className="chunk-btn chunk-btn-accent px-6 py-3 text-sm"
         >

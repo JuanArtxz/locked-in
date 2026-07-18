@@ -7,6 +7,7 @@ import * as cloud from '../lib/cloud';
 import * as db from '../lib/db';
 import { dateLocale, t } from '../lib/i18n';
 import { todayKey } from '../lib/time';
+import { warmReload } from '../lib/reload';
 import { LegalModal } from './Legal';
 import type { LegalDoc } from './Legal';
 
@@ -166,7 +167,7 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
   // opens the login gate by clearing guest mode and reloading
   function openLoginGate() {
     localStorage.removeItem('guest-mode');
-    window.location.reload();
+    warmReload();
   }
 
   async function accSyncNow() {
@@ -196,7 +197,7 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
         pushToast(t('acc.logout.syncfail', r.message), 'error');
         return;
       }
-      window.location.reload();
+      warmReload();
     } finally {
       setLogoutBusy(false);
     }
@@ -227,7 +228,7 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
       localStorage.removeItem('jams-blocked');
       localStorage.removeItem('pokes-blocked');
       localStorage.setItem('guest-mode', '1');
-      window.location.reload();
+      warmReload();
     } finally {
       setDeleteBusy(false);
     }

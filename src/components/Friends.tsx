@@ -17,6 +17,7 @@ import { ConfirmModal } from './Confirm';
 import { CreateGroupModal, GroupView } from './Groups';
 import { Mascot } from './Mascot';
 import { useToast } from '../hooks/useToast';
+import { warmReload } from '../lib/reload';
 
 export interface MyFocusState {
   focusing: boolean;
@@ -725,7 +726,7 @@ export function FriendsPage({
           type="button"
           onClick={() => {
             localStorage.removeItem('guest-mode');
-            window.location.reload();
+            warmReload();
           }}
           className="chunk-btn chunk-btn-accent px-6 py-3 text-sm"
         >

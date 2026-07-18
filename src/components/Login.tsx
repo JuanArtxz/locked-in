@@ -6,6 +6,7 @@ import * as e2e from '../lib/e2e';
 import { getLang, setLang, t } from '../lib/i18n';
 import type { Lang } from '../lib/i18n';
 import * as social from '../lib/social';
+import { warmReload } from '../lib/reload';
 import { Mascot } from './Mascot';
 import { LegalModal } from './Legal';
 import type { LegalDoc } from './Legal';
@@ -175,7 +176,7 @@ export function Login({ onDone }: LoginProps) {
       return;
     }
     if (r.kind === 'restored') {
-      window.location.reload();
+      warmReload();
       return;
     }
     onDone();
@@ -271,7 +272,7 @@ export function Login({ onDone }: LoginProps) {
     try {
       if (useCloud) {
         await cloud.restoreSnapshot(conflict.cloud);
-        window.location.reload();
+        warmReload();
       } else {
         const err = await cloud.uploadSnapshot();
         if (err) {

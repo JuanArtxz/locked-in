@@ -11,6 +11,10 @@ import { KeyBackupModal } from './components/KeyBackup';
 import { GoalsPage } from './components/Goals';
 import { Login } from './components/Login';
 import { Splash } from './components/Splash';
+import { consumeWarmReload, warmReload } from './lib/reload';
+
+// read ONCE at module load — StrictMode re-renders must not re-consume it
+const warmBoot = consumeWarmReload();
 import { HabitsPage } from './components/Habits';
 import { Home } from './components/Home';
 import { Log } from './components/Log';
@@ -165,9 +169,12 @@ function AppShell() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // boot splash: shown at least 5s while everything loads behind it
-  const [splashDone, setSplashDone] = useState(false);
+  // boot splash: held on COLD starts only. Internal reloads (logout, login
+  // gate, cloud restore) mark themselves warm and skip straight past it —
+  // watching the 5s pet on every screen hop read as a loading bug.
+  const [splashDone, setSplashDone] = useState(warmBoot);
   useEffect(() => {
+    if (warmBoot) return;
     const id = window.setTimeout(() => setSplashDone(true), 5000);
     return () => window.clearTimeout(id);
   }, []);
@@ -1899,7 +1906,7 @@ function AppShell() {
         onCreateAccount={() => {
           localStorage.setItem('onboarded-v1', '1');
           localStorage.removeItem('guest-mode');
-          window.location.reload();
+          warmReload();
         }}
         onDone={() => {
           setOnboardOpen(false);
