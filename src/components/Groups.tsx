@@ -955,15 +955,15 @@ export function GroupView({
               <HeadphonesIcon size={17} />
             </button>
             {stickerOpen && (
-              <div className="animate-scale-in absolute bottom-14 left-0 z-30 grid grid-cols-4 gap-1 rounded-2xl border-2 border-border-strong bg-surface p-2 shadow-2xl">
+              <div className="animate-scale-in absolute bottom-14 left-0 z-30 grid w-64 grid-cols-4 gap-1.5 rounded-xl border-2 border-border-strong bg-surface p-2 shadow-2xl shadow-black/50">
                 {STICKER_MOODS.map((mood) => (
                   <button
                     key={mood}
                     type="button"
                     onClick={() => sendSticker(mood)}
-                    className="rounded-xl p-1.5 transition-transform hover:bg-surface-hover"
+                    className="flex items-center justify-center rounded-lg border border-border bg-bg py-2.5 hover:border-accent"
                   >
-                    <Mascot mood={mood} size={48} />
+                    <Mascot mood={mood} size={34} effects={false} />
                   </button>
                 ))}
               </div>
