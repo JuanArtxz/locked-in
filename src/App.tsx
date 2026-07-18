@@ -2184,6 +2184,7 @@ function AppShell() {
           <Home
             focus={focus}
             settings={settingsHook.settings}
+            updateSetting={settingsHook.update}
             onError={onError}
             refreshKey={refreshKey}
             onOpenHabits={() => {

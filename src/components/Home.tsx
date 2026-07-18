@@ -4,12 +4,13 @@ import { parsePomo } from '../hooks/useFocusSession';
 import type { UseFocusSession } from '../hooks/useFocusSession';
 import { JamRoom } from './JamRoom';
 import type { JamRoomMember } from './JamRoom';
-import { CoffeeIcon, TimerIcon } from './Icons';
+import { CoffeeIcon, PaletteIcon, TimerIcon } from './Icons';
 import * as db from '../lib/db';
 import type { DayStat } from '../lib/db';
 import { t } from '../lib/i18n';
 import { formatDurationShort, formatHms, todayKey } from '../lib/time';
 import type { Session, Settings } from '../types';
+import type { UseSettings } from '../hooks/useSettings';
 import { HabitChips } from './Habits';
 import { Mascot } from './Mascot';
 import type { MascotMood } from './Mascot';
@@ -17,6 +18,7 @@ import type { MascotMood } from './Mascot';
 interface HomeProps {
   focus: UseFocusSession;
   settings: Settings | null;
+  updateSetting: UseSettings['update'];
   onError: (message: string) => void;
   refreshKey: number;
   onOpenHabits: () => void;
@@ -31,9 +33,20 @@ const BREAK_OPTIONS = [
   { label: '15 min', sec: 15 * 60 },
 ];
 
+/** Focus-timer looks — Apple-clock inspired. Each is a preview class for the
+ *  picker + the classes/color the live timer uses. */
+const CLOCK_STYLES = [
+  { id: 'classic', cls: 'font-mono font-medium tracking-tight', accent: true },
+  { id: 'thin', cls: 'font-sans font-extralight tracking-tight', accent: false },
+  { id: 'mono', cls: 'font-mono font-extrabold tracking-tight', accent: false },
+  { id: 'serif', cls: 'font-serif font-light tracking-tight', accent: true },
+  { id: 'stack', cls: 'font-sans font-extrabold tracking-tight', accent: true },
+] as const;
+
 export function Home({
   focus,
   settings,
+  updateSetting,
   onError,
   refreshKey,
   onOpenHabits,
@@ -47,6 +60,17 @@ export function Home({
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [breakChoice, setBreakChoice] = useState<number | null>(BREAK_OPTIONS[0].sec);
+
+  // clock customizer popover (focus screen)
+  const [clockOpen, setClockOpen] = useState(false);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.('[data-pop]')) return;
+      setClockOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
 
   useEffect(() => {
     // projects ARE the goals — a project exists by creating it in Goals, so
@@ -121,8 +145,85 @@ export function Home({
         : sessionMin >= 30
           ? 'happy'
           : 'focus';
+    const minimal = settings?.focus_minimal === true;
+    const styleDef =
+      CLOCK_STYLES.find((s) => s.id === (settings?.clock_style || 'classic')) ?? CLOCK_STYLES[0];
+    // minimal mode: only the timer stays visible — everything else fades in on hover
+    const ghost = minimal
+      ? 'opacity-0 transition-opacity duration-150 group-hover/focus:opacity-100'
+      : '';
+    const timerSize = minimal
+      ? 'text-[clamp(72px,16vw,190px)]'
+      : 'text-[clamp(52px,11vw,96px)]';
+    const timerColor = paused
+      ? 'text-text-faint'
+      : styleDef.accent
+        ? 'text-accent'
+        : 'text-text';
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-6 px-6">
+      <div className="group/focus relative flex h-full flex-col items-center justify-center gap-6 px-6">
+        {/* clock customizer — quiet corner button, revealed on hover */}
+        <div className="absolute right-4 top-4 z-20" data-pop>
+          <button
+            type="button"
+            title={t('home.clock.customize')}
+            onClick={() => setClockOpen((o) => !o)}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg text-text-faint transition-opacity hover:bg-surface-hover hover:text-text ${
+              clockOpen ? 'opacity-100' : 'opacity-0 group-hover/focus:opacity-100'
+            }`}
+          >
+            <PaletteIcon size={15} />
+          </button>
+          {clockOpen && (
+            <div className="animate-scale-in absolute right-0 top-10 z-30 w-60 rounded-xl border-2 border-border-strong bg-surface p-2 shadow-2xl shadow-black/50">
+              <div className="px-1.5 pb-1 text-[10px] font-extrabold uppercase tracking-wide text-text-faint">
+                {t('home.clock.title')}
+              </div>
+              {CLOCK_STYLES.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => updateSetting('clock_style', s.id)}
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-surface-hover ${
+                    styleDef.id === s.id ? 'bg-surface-hover' : ''
+                  }`}
+                >
+                  <span
+                    className={`text-xs font-semibold ${styleDef.id === s.id ? 'text-accent' : 'text-text'}`}
+                  >
+                    {t(`home.clock.${s.id}`)}
+                  </span>
+                  <span className={`${s.cls} text-base leading-none text-text-dim tabular-nums`}>
+                    {s.id === 'stack' ? '12·34' : '12:34'}
+                  </span>
+                </button>
+              ))}
+              <div className="mt-1 border-t border-border pt-1">
+                <button
+                  type="button"
+                  onClick={() => updateSetting('focus_minimal', !minimal)}
+                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 hover:bg-surface-hover"
+                >
+                  <span className="text-xs font-semibold text-text">{t('home.clock.minimal')}</span>
+                  <span
+                    className={`relative h-4 w-7 rounded-full transition-colors ${
+                      minimal ? 'bg-accent' : 'bg-border-strong'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-3 w-3 rounded-full bg-bg transition-transform ${
+                        minimal ? 'translate-x-3.5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+                <div className="px-2.5 pb-1 text-[10px] leading-snug text-text-faint">
+                  {t('home.clock.minimal.hint')}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
         {focus.isAbsurd && !paused && (
           <div className="animate-fade-in rounded-xl border border-warn/30 bg-warn-dim px-4 py-2 text-sm text-warn">
             {t('home.absurd')}
@@ -151,9 +252,11 @@ export function Home({
           </div>
         )}
 
-        <Mascot mood={mascotMood} size={72} />
+        <div className={ghost}>
+          <Mascot mood={mascotMood} size={72} />
+        </div>
 
-        <div className="flex flex-col items-center gap-2.5">
+        <div className={`flex flex-col items-center gap-2.5 ${ghost}`}>
           <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.15em] text-text-faint">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
@@ -194,26 +297,53 @@ export function Home({
 
         {/* the living jam room — everyone in the session, rings + 🔥 */}
         {jamRoom && jamRoom.length >= 2 && (
-          <JamRoom
-            members={jamRoom}
-            sharedSec={focus.displayElapsedSec}
-            pomo={focus.jam?.pomo ?? null}
-            onCheer={onCheer}
-          />
+          <div className={ghost}>
+            <JamRoom
+              members={jamRoom}
+              sharedSec={focus.displayElapsedSec}
+              pomo={focus.jam?.pomo ?? null}
+              onCheer={onCheer}
+            />
+          </div>
         )}
 
-        <div
-          className={`font-mono text-[clamp(52px,11vw,96px)] font-medium leading-none tabular-nums tracking-tight ${
-            paused ? 'text-text-faint' : 'text-accent'
-          }`}
-          style={paused ? undefined : { textShadow: '0 0 60px rgba(212,255,63,0.12)' }}
-        >
-          {formatHms(focus.displayElapsedSec)}
-        </div>
+        {styleDef.id === 'stack' ? (
+          (() => {
+            // Apple StandBy look: time stacked in two heavy rows
+            const total = Math.floor(focus.displayElapsedSec);
+            const h = Math.floor(total / 3600);
+            const m = Math.floor((total % 3600) / 60);
+            const s = total % 60;
+            const top = h > 0 ? `${h}:${String(m).padStart(2, '0')}` : String(m).padStart(2, '0');
+            return (
+              <div className="flex flex-col items-center leading-[0.9] tabular-nums">
+                <span
+                  className={`${styleDef.cls} ${timerSize} ${paused ? 'text-text-faint' : 'text-text'}`}
+                >
+                  {top}
+                </span>
+                <span className={`${styleDef.cls} ${timerSize} ${timerColor}`}>
+                  {String(s).padStart(2, '0')}
+                </span>
+              </div>
+            );
+          })()
+        ) : (
+          <div
+            className={`${styleDef.cls} ${timerSize} ${timerColor} leading-none tabular-nums`}
+            style={
+              !paused && styleDef.id === 'classic'
+                ? { textShadow: '0 0 60px rgba(212,255,63,0.12)' }
+                : undefined
+            }
+          >
+            {formatHms(focus.displayElapsedSec)}
+          </div>
+        )}
 
         {paused && <span className="text-xs text-text-faint">{t('home.paused.hint')}</span>}
 
-        <div className="flex items-center gap-2.5">
+        <div className={`flex items-center gap-2.5 ${ghost}`}>
           {paused ? (
             <button
               type="button"

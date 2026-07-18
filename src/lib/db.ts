@@ -760,6 +760,8 @@ const SETTINGS_DEFAULTS: Settings = {
   friends_bar_enabled: true,
   pomodoro_enabled: false,
   telemetry_enabled: false,
+  clock_style: 'classic',
+  focus_minimal: false,
 };
 
 // ---------- reference board ----------
