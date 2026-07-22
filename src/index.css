@@ -611,11 +611,9 @@ input[type='number'] {
 .cascade > *:nth-child(n + 8) {
   animation-delay: 210ms;
 }
-@media (prefers-reduced-motion: reduce) {
-  .cascade > * {
-    animation: none;
-  }
-}
+/* no prefers-reduced-motion guard on purpose: Windows "animation effects off"
+   (default on many gamer setups) was silently killing the cascade while every
+   other animation in the app still ran — the entrance IS the product's look */
 
 /* skeleton loading block */
 @keyframes skeleton-pulse {
