@@ -25,6 +25,12 @@ function ClockIcon({ size = 15 }: { size?: number }) {
   );
 }
 
+const TIME_PRESETS = [9 * 60, 12 * 60, 15 * 60, 18 * 60, 21 * 60];
+
+function fmtMin(min: number): string {
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+}
+
 /** "hoje 18:00" / "amanhã 09:00" / "23 jul 14:00" */
 function fmtDue(iso: string): string {
   const d = new Date(iso);
@@ -44,11 +50,15 @@ export function TasksPage({ onError }: TasksProps) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState('');
-  const [due, setDue] = useState('');
   const [dueOpen, setDueOpen] = useState(false);
+  const [dueDay, setDueDay] = useState<Date | null>(null);
+  const [dueMin, setDueMin] = useState(18 * 60);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<TaskItem | null>(null);
+  // just-completed tasks linger in place briefly before moving to the done section
+  const [holding, setHolding] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
+  const dueRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const reload = useCallback(() => {
@@ -68,8 +78,19 @@ export function TasksPage({ onError }: TasksProps) {
     return () => window.clearInterval(id);
   }, []);
 
+  // deadline popover closes on any click outside it
+  useEffect(() => {
+    if (!dueOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!dueRef.current?.contains(e.target as Node)) setDueOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [dueOpen]);
+
+  const doneCount = tasks.filter((task) => !!task.done_at).length;
   const open = tasks
-    .filter((task) => !task.done_at)
+    .filter((task) => !task.done_at || holding.has(task.id))
     .sort((a, b) => {
       if (a.due_at && b.due_at) return a.due_at.localeCompare(b.due_at);
       if (a.due_at) return -1;
@@ -77,18 +98,34 @@ export function TasksPage({ onError }: TasksProps) {
       return a.created_at.localeCompare(b.created_at);
     });
   const done = tasks
-    .filter((task) => !!task.done_at)
+    .filter((task) => !!task.done_at && !holding.has(task.id))
     .sort((a, b) => (b.done_at ?? '').localeCompare(a.done_at ?? ''));
   const total = tasks.length;
-  const pct = total === 0 ? 0 : Math.round((done.length / total) * 100);
+  const pct = total === 0 ? 0 : Math.round((doneCount / total) * 100);
+
+  const dueValue = dueDay ? new Date(dueDay.getTime() + dueMin * 60_000) : null;
+
+  const dayChips = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + i);
+    const label =
+      i === 0
+        ? t('tasks.due.today')
+        : i === 1
+          ? t('tasks.due.tomorrow')
+          : d.toLocaleDateString(dateLocale(), { weekday: 'short', day: 'numeric' });
+    return { date: d, label };
+  });
 
   async function add() {
     const title = draft.trim();
     if (!title) return;
     try {
-      await db.createTask(title, due ? new Date(due).toISOString() : null);
+      await db.createTask(title, dueValue ? dueValue.toISOString() : null);
       setDraft('');
-      setDue('');
+      setDueDay(null);
+      setDueMin(18 * 60);
       setDueOpen(false);
       reload();
       inputRef.current?.focus();
@@ -99,15 +136,24 @@ export function TasksPage({ onError }: TasksProps) {
 
   async function toggle(task: TaskItem) {
     const nowDone = !task.done_at;
-    // optimistic: the check fills instantly, the row re-sorts on reload
+    // optimistic: only this row changes — no list reload
     setTasks((prev) =>
       prev.map((row) =>
         row.id === task.id ? { ...row, done_at: nowDone ? new Date().toISOString() : null } : row,
       ),
     );
+    if (nowDone) {
+      setHolding((prev) => new Set(prev).add(task.id));
+      window.setTimeout(() => {
+        setHolding((prev) => {
+          const next = new Set(prev);
+          next.delete(task.id);
+          return next;
+        });
+      }, 700);
+    }
     try {
       await db.toggleTask(task.id, nowDone);
-      reload();
     } catch (err) {
       onError(String(err));
       reload();
@@ -120,13 +166,13 @@ export function TasksPage({ onError }: TasksProps) {
     return (
       <div
         key={task.id}
-        className="group flex items-center gap-3.5 rounded-2xl bg-surface px-4 py-3.5"
+        className="group flex items-center gap-3.5 rounded-2xl border bg-surface px-4 py-3.5"
       >
         <button
           type="button"
           onClick={() => toggle(task)}
           aria-label={task.title}
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ${
+          className={`no-press flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ${
             isDone
               ? 'border-accent bg-accent text-bg'
               : 'border-white/15 text-transparent hover:border-accent/60'
@@ -176,11 +222,11 @@ export function TasksPage({ onError }: TasksProps) {
         </header>
 
         {/* progress hero — same visual language as the "today" card on Focus */}
-        <section className="rounded-3xl bg-surface p-6">
+        <section className="rounded-3xl border bg-surface p-6">
           <div className="flex items-end justify-between">
             <div>
               <div className="text-[28px] font-extrabold leading-none tabular-nums text-text">
-                {done.length}
+                {doneCount}
                 <span className="text-text-faint">/{total}</span>
               </div>
               <div className="mt-1.5 text-[13px] font-semibold text-text-dim">
@@ -205,9 +251,9 @@ export function TasksPage({ onError }: TasksProps) {
           <p className="mt-3 text-[13px] font-semibold text-text-faint">
             {total === 0
               ? t('tasks.empty')
-              : open.length === 0
+              : doneCount === total
                 ? t('tasks.progress.all')
-                : t('tasks.progress.left', open.length)}
+                : t('tasks.progress.left', total - doneCount)}
           </p>
         </section>
 
@@ -217,7 +263,7 @@ export function TasksPage({ onError }: TasksProps) {
             e.preventDefault();
             add();
           }}
-          className="flex items-center gap-1 rounded-2xl bg-surface py-2 pl-4 pr-2"
+          className="relative flex items-center gap-1 rounded-2xl border bg-surface py-2 pl-4 pr-2"
         >
           <input
             ref={inputRef}
@@ -226,28 +272,18 @@ export function TasksPage({ onError }: TasksProps) {
             placeholder={t('tasks.new.ph')}
             className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-text outline-none placeholder:text-text-faint"
           />
-          {dueOpen && (
-            <input
-              type="datetime-local"
-              value={due}
-              onChange={(e) => setDue(e.target.value)}
-              className="animate-fade-in shrink-0 rounded-full bg-bg/60 px-3 py-1.5 text-xs font-semibold text-text-dim outline-none [color-scheme:dark]"
-            />
-          )}
           <button
             type="button"
-            onClick={() => {
-              if (dueOpen) setDue('');
-              setDueOpen(!dueOpen);
-            }}
+            onClick={() => setDueOpen(!dueOpen)}
             title={t('tasks.due.set')}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
-              dueOpen || due
-                ? 'bg-accent/10 text-accent'
-                : 'text-text-dim hover:bg-white/5 hover:text-text'
+            className={`no-press flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full transition-colors ${
+              dueValue
+                ? 'bg-accent/10 px-3 text-xs font-bold tabular-nums text-accent'
+                : `w-9 ${dueOpen ? 'bg-white/5 text-text' : 'text-text-dim hover:bg-white/5 hover:text-text'}`
             }`}
           >
-            <ClockIcon />
+            <ClockIcon size={dueValue ? 13 : 15} />
+            {dueValue && fmtDue(dueValue.toISOString())}
           </button>
           <div
             className="shrink-0 overflow-hidden transition-all duration-200 ease-out"
@@ -265,6 +301,97 @@ export function TasksPage({ onError }: TasksProps) {
               </svg>
             </button>
           </div>
+
+          {/* deadline picker — day chips + time presets, zero native widgets */}
+          {dueOpen && (
+            <div
+              ref={dueRef}
+              className="chunk animate-scale-in absolute bottom-12 right-0 z-20 w-[21.5rem] p-4"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold uppercase tracking-wide text-text-faint">
+                  {t('tasks.due')}
+                </span>
+                {dueDay && (
+                  <button
+                    type="button"
+                    onClick={() => setDueDay(null)}
+                    className="text-xs font-bold text-text-faint transition-colors hover:text-danger"
+                  >
+                    {t('tasks.done.clear')}
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {dayChips.map(({ date, label }) => {
+                  const active = dueDay?.getTime() === date.getTime();
+                  return (
+                    <button
+                      key={date.getTime()}
+                      type="button"
+                      onClick={() => setDueDay(active ? null : date)}
+                      className={`no-press rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                        active
+                          ? 'bg-accent text-bg'
+                          : 'bg-bg/60 text-text-dim hover:text-text'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 flex items-center gap-1.5">
+                {TIME_PRESETS.map((min) => (
+                  <button
+                    key={min}
+                    type="button"
+                    onClick={() => {
+                      setDueMin(min);
+                      if (!dueDay) setDueDay(dayChips[0].date);
+                    }}
+                    className={`no-press rounded-full px-2.5 py-1.5 text-xs font-bold tabular-nums transition-colors ${
+                      dueMin === min && dueDay
+                        ? 'bg-accent text-bg'
+                        : 'bg-bg/60 text-text-dim hover:text-text'
+                    }`}
+                  >
+                    {fmtMin(min)}
+                  </button>
+                ))}
+                <span className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => setDueMin((m) => (m + 1410) % 1440)}
+                  className="no-press flex h-7 w-7 items-center justify-center rounded-full bg-bg/60 text-text-dim transition-colors hover:text-text"
+                  aria-label="-30min"
+                >
+                  ‹
+                </button>
+                <span className="w-12 text-center text-sm font-extrabold tabular-nums text-text">
+                  {fmtMin(dueMin)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDueMin((m) => (m + 30) % 1440)}
+                  className="no-press flex h-7 w-7 items-center justify-center rounded-full bg-bg/60 text-text-dim transition-colors hover:text-text"
+                  aria-label="+30min"
+                >
+                  ›
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!dueDay) setDueDay(dayChips[0].date);
+                  setDueOpen(false);
+                }}
+                className="no-press mt-3.5 w-full rounded-xl bg-accent py-2.5 text-sm font-extrabold text-bg"
+              >
+                {t('tasks.due.ok')}
+              </button>
+            </div>
+          )}
         </form>
 
         {open.length > 0 && (
