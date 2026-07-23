@@ -367,7 +367,7 @@ function FriendProfile({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-xl space-y-4 px-5 pb-10 pt-8">
+      <div className="cascade mx-auto max-w-xl space-y-4 px-5 pb-10 pt-8">
         {/* identity header — same shape as my own profile */}
         <div className="flex items-center gap-5">
           <div className="relative shrink-0">
@@ -1664,7 +1664,7 @@ export function FriendsPage({
 
       {/* RIGHT: chat / profile / placeholder */}
       <main className="animate-fade-in min-h-0 min-w-0 flex-1 p-4">
-        <div className="h-full overflow-hidden rounded-3xl bg-black/25">
+        <div className="h-full overflow-hidden rounded-3xl bg-surface">
         {chattingFriend ? (
           (() => {
             const presRow = soc.presence.get(chattingFriend.userId);

@@ -1074,7 +1074,7 @@ export function GroupView({
                       className={`bubble-shadow flex items-center gap-2 rounded-2xl px-3 py-2 ${
                         m.mine
                           ? `rounded-br-md ${theme ? '' : 'bg-white/[0.08]'}`
-                          : 'rounded-bl-md bg-surface'
+                          : 'rounded-bl-md bg-bg/60'
                       }`}
                       style={m.mine && theme ? { backgroundColor: theme } : undefined}
                     >
@@ -1091,7 +1091,7 @@ export function GroupView({
                       className={`bubble-shadow rounded-2xl px-4 py-3 text-base font-medium leading-relaxed ${
                         m.mine
                           ? `rounded-br-md ${theme ? 'text-bg' : 'bg-white/[0.08] text-text'} ${firstOfGroup ? '' : 'rounded-tr-md'}`
-                          : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
+                          : `rounded-bl-md bg-bg/60 text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
                       }`}
                       style={m.mine && theme ? { backgroundColor: theme } : undefined}
                     >
