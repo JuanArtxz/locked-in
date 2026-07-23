@@ -389,7 +389,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
         {!loading && mode === 'month' && (
           <div
             key={`m-${rangeStart}`}
-            className="animate-fade-in flex h-full flex-col rounded-2xl border border-border bg-surface p-4"
+            className="flex h-full flex-col rounded-2xl border border-border bg-surface p-4"
           >
             <div className="flex min-h-0 flex-1 items-end gap-[3px]">
               {rangeDays.map((day) => {
@@ -400,7 +400,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
                   <div
                     key={day}
                     title={`${new Date(day + 'T00:00:00').toLocaleDateString(dateLocale())} · ${sec > 0 ? formatDurationShort(sec) : '0'}`}
-                    className={`min-w-0 flex-1 rounded-t-[4px] ${
+                    className={`grow-y min-w-0 flex-1 rounded-t-[4px] ${
                       day === today
                         ? 'bg-accent'
                         : sec > 0
@@ -409,7 +409,10 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
                             ? 'bg-transparent'
                             : 'bg-surface-2'
                     }`}
-                    style={{ height: `${Math.max(sec > 0 ? 6 : 2, (sec / max) * 100)}%` }}
+                    style={{
+                      height: `${Math.max(sec > 0 ? 6 : 2, (sec / max) * 100)}%`,
+                      animationDelay: `${rangeDays.indexOf(day) * 10}ms`,
+                    }}
                   />
                 );
               })}
@@ -432,7 +435,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
         {!loading && mode === 'week' && (
         <div
           key={`w-${rangeStart}`}
-          className="animate-fade-in h-full space-y-1.5 overflow-hidden rounded-2xl border border-border bg-surface p-4"
+          className="h-full space-y-1.5 overflow-hidden rounded-2xl border border-border bg-surface p-4"
         >
           <div className="flex items-center gap-3 pb-1">
             <div className="w-9 shrink-0" />
@@ -481,7 +484,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
                     {WEEKDAY_NAMES[i]}
                   </div>
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="grow-x min-w-0 flex-1" style={{ animationDelay: `${i * 45}ms` }}>
                   <DayTimeline
                     sessions={sessions.filter((s) => dateKey(s.started_at) === day)}
                     breaks={breaks.filter((b) => dateKey(b.started_at) === day)}

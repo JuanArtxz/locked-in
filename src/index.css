@@ -651,6 +651,32 @@ input[type='number'] {
    (default on many gamer setups) was silently killing the cascade while every
    other animation in the app still ran — the entrance IS the product's look */
 
+/* chart draw-in: bars grow from their baseline when a chart (re)mounts */
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.grow-x {
+  transform-origin: left;
+  animation: grow-x 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.grow-y {
+  transform-origin: bottom;
+  animation: grow-y 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* skeleton loading block */
 @keyframes skeleton-pulse {
   0%,

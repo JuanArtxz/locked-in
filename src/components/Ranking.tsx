@@ -175,13 +175,13 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
     );
   }
 
-  const top10 = ranking.slice(0, 10);
+  // podium already shows 1–3; the list picks up from 4th so nothing repeats
+  // and the whole page fits a normal window without scrolling
+  const rest = ranking.slice(3, 10);
 
   return (
-    // no page scroll: everything fits the viewport; only very small windows
-    // fall back to scrolling
     <div className="h-full overflow-y-auto p-6">
-      <div className="cascade mx-auto flex h-full min-h-[540px] max-w-5xl flex-col">
+      <div className="cascade mx-auto max-w-5xl">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-text">{t('rank.title')}</h1>
@@ -205,9 +205,9 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
           </div>
         </div>
 
-        <div className="mt-5 grid min-h-0 flex-1 items-stretch gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
-          {/* LEFT: podium + top 10 */}
-          <div className="flex h-full min-h-0 flex-col gap-5">
+        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+          {/* LEFT: podium + positions 4–10 */}
+          <div className="flex flex-col gap-5">
             <div className="flex items-end justify-center gap-3">
               {podiumOrder.map((e) => {
                 const place = ranking.indexOf(e);
@@ -242,11 +242,12 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
               })}
             </div>
 
-            <div className="chunk scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-              {top10.map((e, i) => (
+            {rest.length > 0 && (
+            <div className="chunk space-y-2.5 p-4">
+              {rest.map((e, i) => (
                 <div key={e.userId} className="flex items-center gap-3">
                   <span className="w-6 shrink-0 text-center font-mono text-[12px] font-extrabold text-text-faint">
-                    {i + 1}
+                    {i + 4}
                   </span>
                   <Avatar src={e.avatar} name={e.username} size="h-8 w-8" live={e.live} />
                   <div className="min-w-0 flex-1">
@@ -275,6 +276,7 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
                 </div>
               ))}
             </div>
+            )}
           </div>
 
           {/* RIGHT: my position + squad stats */}
