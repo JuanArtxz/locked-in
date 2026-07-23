@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import * as db from '../lib/db';
 import { dateLocale, t } from '../lib/i18n';
 import { checkinPeriod, todayKey } from '../lib/time';
 import type { HourlyLog, Settings } from '../types';
+import { ConfirmModal } from './Confirm';
 import { Mascot } from './Mascot';
 
 interface CheckinProps {
@@ -16,8 +17,7 @@ export function CheckinPage({ settings, onError }: CheckinProps) {
   const [streak, setStreak] = useState(0);
   const [input, setInput] = useState('');
   const [now, setNow] = useState(() => new Date());
-  const [confirmingClear, setConfirmingClear] = useState(false);
-  const clearTimer = useRef<number | null>(null);
+  const [clearModal, setClearModal] = useState(false);
 
   const enabled = settings?.checkin_enabled ?? true;
   const intervalMin = settings?.checkin_interval_min ?? 60;
@@ -46,12 +46,6 @@ export function CheckinPage({ settings, onError }: CheckinProps) {
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 15_000);
     return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (clearTimer.current) window.clearTimeout(clearTimer.current);
-    };
   }, []);
 
   const period = checkinPeriod(intervalMin, now);
@@ -95,18 +89,6 @@ export function CheckinPage({ settings, onError }: CheckinProps) {
     }
   }
 
-  function requestClear() {
-    if (confirmingClear) {
-      if (clearTimer.current) window.clearTimeout(clearTimer.current);
-      setConfirmingClear(false);
-      db.clearHourlyLogs().then(reload).catch((err) => onError(String(err)));
-      return;
-    }
-    setConfirmingClear(true);
-    if (clearTimer.current) window.clearTimeout(clearTimer.current);
-    clearTimer.current = window.setTimeout(() => setConfirmingClear(false), 3000);
-  }
-
   const createdTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
 
@@ -115,13 +97,13 @@ export function CheckinPage({ settings, onError }: CheckinProps) {
       {/* page-level scroller like Habits — same scrollbar gutter, so the
           centered column lands at the SAME x as the Habits tab */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="cascade mx-auto w-full max-w-2xl px-4 pt-6 sm:px-6 xl:max-w-3xl">
+      <div className="cascade mx-auto w-full max-w-3xl px-4 pt-8 sm:px-6 xl:max-w-4xl">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-text">
+            <h1 className="text-3xl font-bold tracking-tight text-text">
               {t('ci.thishour')} <span className="text-accent">{period.startLabel}</span>
             </h1>
-            <p className="mt-1 text-xs text-text-faint">
+            <p className="mt-1.5 text-[13px] text-text-faint">
               {enabled ? (
                 <>
                   {t('ci.next')} <span className="text-accent">{nextAt}</span>
@@ -135,78 +117,102 @@ export function CheckinPage({ settings, onError }: CheckinProps) {
               )}
             </p>
           </div>
-          <Mascot mood={loggedToday > 0 ? 'happy' : 'relax'} size={52} />
+          <Mascot mood={loggedToday > 0 ? 'happy' : 'relax'} size={60} />
         </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-3">
+        <div className="mt-6 grid grid-cols-3 gap-3.5">
           <div
-            className={`rounded-2xl p-4 ${
+            className={`rounded-2xl p-5 ${
               loggedToday > 0 ? 'bg-accent text-bg' : 'border border-border bg-surface'
             }`}
           >
-            <div className="font-mono text-2xl font-bold tabular-nums">{loggedToday}</div>
+            <div className="font-mono text-3xl font-bold tabular-nums">{loggedToday}</div>
             <div
-              className={`mt-0.5 text-[10px] font-semibold tracking-[0.1em] ${
+              className={`mt-1 text-[11px] font-semibold tracking-[0.1em] ${
                 loggedToday > 0 ? 'text-bg/70' : 'text-text-faint'
               }`}
             >
               {t('ci.logged')}
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-surface p-4">
-            <div className="font-mono text-2xl font-bold tabular-nums text-text">{streak}</div>
-            <div className="mt-0.5 text-[10px] font-semibold tracking-[0.1em] text-text-faint">
+          <div className="rounded-2xl border border-border bg-surface p-5">
+            <div className="font-mono text-3xl font-bold tabular-nums text-text">{streak}</div>
+            <div className="mt-1 text-[11px] font-semibold tracking-[0.1em] text-text-faint">
               {t('ci.streak')}
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-surface p-4">
-            <div className="font-mono text-2xl font-bold tabular-nums text-text">
+          <div className="rounded-2xl border border-border bg-surface p-5">
+            <div className="font-mono text-3xl font-bold tabular-nums text-text">
               {skippedToday}
             </div>
-            <div className="mt-0.5 text-[10px] font-semibold tracking-[0.1em] text-text-faint">
+            <div className="mt-1 text-[11px] font-semibold tracking-[0.1em] text-text-faint">
               {t('ci.skipped')}
             </div>
           </div>
         </div>
 
-        <h2 className="mb-2 mt-6 text-xs font-medium uppercase tracking-[0.12em] text-text-faint">
-          {t('ci.todaylog')}
-        </h2>
-        <div className="space-y-1.5 pb-3">
+        <div className="mb-2.5 mt-7 flex items-center justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-[0.12em] text-text-faint">
+            {t('ci.todaylog')}
+          </h2>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={exportLogs}
+              className="no-press rounded-full px-3 py-1.5 text-[11px] font-semibold text-text-faint transition-colors hover:bg-surface-hover hover:text-text"
+            >
+              {t('ci.export')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setClearModal(true)}
+              className="no-press rounded-full px-3 py-1.5 text-[11px] font-semibold text-text-faint transition-colors hover:bg-danger/10 hover:text-danger"
+            >
+              {t('ci.clear')}
+            </button>
+          </div>
+        </div>
+        <div className="space-y-2 pb-3">
           {logs.length === 0 && (
             <div className="rounded-2xl border border-dashed border-border py-8 text-center text-xs text-text-faint">
               {t('ci.empty')}
             </div>
           )}
-          {logs.map((l) => (
-            <div
-              key={l.id}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3"
-            >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-2 font-mono text-[11px] font-semibold tabular-nums text-text-dim">
-                {l.period_start.slice(0, 2)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="font-mono text-[11px] tabular-nums text-text-faint">
-                  {l.period_start} – {l.period_end}
+          {logs.map((l) => {
+            // a just-saved log rises in and flashes accent once
+            const fresh = Date.now() - new Date(l.created_at).getTime() < 4000;
+            return (
+              <div
+                key={l.id}
+                className={`flex items-center gap-3.5 rounded-2xl border border-border bg-surface px-4 py-3.5 ${
+                  fresh ? 'animate-fade-up flash-msg' : ''
+                }`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-2 font-mono text-xs font-semibold tabular-nums text-text-dim">
+                  {l.period_start.slice(0, 2)}
                 </div>
-                {l.skipped ? (
-                  <div className="text-[13px] italic text-text-faint">{t('ci.skippedrow')}</div>
-                ) : (
-                  <div className="break-words text-[13px] text-text">{l.text}</div>
-                )}
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-xs tabular-nums text-text-faint">
+                    {l.period_start} – {l.period_end}
+                  </div>
+                  {l.skipped ? (
+                    <div className="text-sm italic text-text-faint">{t('ci.skippedrow')}</div>
+                  ) : (
+                    <div className="break-words text-sm text-text">{l.text}</div>
+                  )}
+                </div>
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-text-faint">
+                  {createdTime(l.created_at)}
+                </span>
               </div>
-              <span className="shrink-0 font-mono text-[10px] tabular-nums text-text-faint">
-                {createdTime(l.created_at)}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       </div>
 
       <div className="border-t border-border bg-bg/80">
-        <div className="mx-auto w-full max-w-2xl px-4 py-3 sm:px-6 xl:max-w-3xl">
+        <div className="mx-auto w-full max-w-3xl px-4 py-3.5 sm:px-6 xl:max-w-4xl">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -229,37 +235,27 @@ export function CheckinPage({ settings, onError }: CheckinProps) {
               →
             </button>
           </form>
-          <div className="mt-2 flex items-center justify-between text-[11px] text-text-faint">
-            <span>
-              {streak >= 2 ? (
-                <span className="text-accent">{t('ci.streakon', String(streak))}</span>
-              ) : (
-                t('ci.nostreak')
-              )}
-            </span>
-            <span className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={exportLogs}
-                className="rounded-full border border-border px-3 py-1 text-text-dim hover:border-border-strong hover:text-text"
-              >
-                {t('ci.export')}
-              </button>
-              <button
-                type="button"
-                onClick={requestClear}
-                className={`rounded-full px-3 py-1 ${
-                  confirmingClear
-                    ? 'bg-danger/15 font-medium text-danger'
-                    : 'border border-border text-text-dim hover:border-border-strong hover:text-danger'
-                }`}
-              >
-                {confirmingClear ? t('ci.clear.confirm') : t('ci.clear')}
-              </button>
-            </span>
+          <div className="mt-2 text-xs text-text-faint">
+            {streak >= 2 ? (
+              <span className="text-accent">{t('ci.streakon', String(streak))}</span>
+            ) : (
+              t('ci.nostreak')
+            )}
           </div>
         </div>
       </div>
+
+      {clearModal && (
+        <ConfirmModal
+          title={t('ci.clear')}
+          body={t('ci.clear.confirm')}
+          confirmLabel={t('ci.clear')}
+          onConfirm={() =>
+            db.clearHourlyLogs().then(reload).catch((err) => onError(String(err)))
+          }
+          onClose={() => setClearModal(false)}
+        />
+      )}
     </div>
   );
 }

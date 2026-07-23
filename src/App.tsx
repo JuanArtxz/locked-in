@@ -85,7 +85,7 @@ function SubTabs<T extends string>({
             key={o.id}
             type="button"
             onClick={() => onChange(o.id)}
-            className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${
+            className={`no-press rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${
               value === o.id
                 ? 'bg-surface-hover text-text shadow-sm'
                 : 'text-text-dim hover:text-text'

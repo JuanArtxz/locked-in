@@ -403,6 +403,12 @@ button:active:not(:disabled) {
   transform: scale(0.97);
 }
 
+/* segmented controls / toggles: selection is the feedback — no press-scale
+   (the shrinking text reads as AI-ish) */
+.no-press:active:not(:disabled) {
+  transform: none;
+}
+
 /* nav pill: flat and calm — no card shadow/gradient, no press/hover motion.
    the ONLY motion is the accent indicator gliding between tabs. */
 .nav-pill {

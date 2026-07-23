@@ -317,7 +317,7 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
                     setMode(m);
                     setWeekOffset(0);
                   }}
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  className={`no-press rounded-full px-3 py-1 text-xs font-medium ${
                     mode === m ? 'bg-surface-hover text-text shadow-sm' : 'text-text-dim hover:text-text'
                   }`}
                 >
@@ -333,8 +333,12 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
               onClick={shareCard}
               disabled={sharing || weekTotal === 0}
               title={t('card.btn.hint')}
-              className="ml-2 flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-[13px] font-bold text-bg shadow-lg shadow-accent/20 hover:brightness-110 disabled:opacity-30 disabled:shadow-none"
+              className="no-press ml-2 flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-[13px] font-semibold text-text-dim transition-colors hover:border-border-strong hover:text-text disabled:opacity-30"
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
+                <path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
+              </svg>
               {sharing ? '…' : t('card.btn')}
             </button>
           </div>
@@ -383,7 +387,10 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
           </div>
         )}
         {!loading && mode === 'month' && (
-          <div className="flex h-full flex-col rounded-2xl border border-border bg-surface p-4">
+          <div
+            key={`m-${rangeStart}`}
+            className="animate-fade-in flex h-full flex-col rounded-2xl border border-border bg-surface p-4"
+          >
             <div className="flex min-h-0 flex-1 items-end gap-[3px]">
               {rangeDays.map((day) => {
                 const sec = daySec(day);
@@ -423,7 +430,10 @@ export function Week({ onError, refreshKey, dailyGoalHours }: WeekProps) {
         )}
 
         {!loading && mode === 'week' && (
-        <div className="h-full space-y-1.5 overflow-hidden rounded-2xl border border-border bg-surface p-4">
+        <div
+          key={`w-${rangeStart}`}
+          className="animate-fade-in h-full space-y-1.5 overflow-hidden rounded-2xl border border-border bg-surface p-4"
+        >
           <div className="flex items-center gap-3 pb-1">
             <div className="w-9 shrink-0" />
             <div className="relative h-3 min-w-0 flex-1">

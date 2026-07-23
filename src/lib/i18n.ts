@@ -1258,7 +1258,7 @@ const dict: Record<string, { pt: string; en: string }> = {
   'month.day': { pt: 'Dia {0}', en: 'Day {0}' },
 
   // week share card
-  'card.btn': { pt: '📤 cartão', en: '📤 card' },
+  'card.btn': { pt: 'Cartão', en: 'Card' },
   'card.btn.hint': {
     pt: 'Gera uma imagem da semana pra compartilhar.',
     en: 'Renders a shareable image of the week.',

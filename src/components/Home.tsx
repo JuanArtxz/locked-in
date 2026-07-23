@@ -137,7 +137,6 @@ export function Home({
     const paused = focus.phase === 'paused';
     const styleDef =
       CLOCK_STYLES.find((s) => s.id === (settings?.clock_style || 'classic')) ?? CLOCK_STYLES[0];
-    const timerSize = 'text-[clamp(52px,11vw,96px)]';
     const timerColor = paused
       ? 'text-text-faint'
       : styleDef.accent
@@ -264,34 +263,45 @@ export function Home({
           </div>
         )}
 
-        {styleDef.id === 'stack' ? (
-          (() => {
-            // Apple StandBy look: time stacked in two heavy rows
-            const total = Math.floor(focus.displayElapsedSec);
-            const h = Math.floor(total / 3600);
-            const m = Math.floor((total % 3600) / 60);
-            const s = total % 60;
-            const top = h > 0 ? `${h}:${String(m).padStart(2, '0')}` : String(m).padStart(2, '0');
-            return (
-              <div className="flex flex-col items-center leading-[0.9] tabular-nums">
-                <span
-                  className={`${styleDef.cls} ${timerSize} transition-colors duration-300 ${paused ? 'text-text-faint' : 'text-text'}`}
-                >
-                  {top}
-                </span>
-                <span className={`${styleDef.cls} ${timerSize} ${timerColor} transition-colors duration-300`}>
-                  {String(s).padStart(2, '0')}
-                </span>
-              </div>
-            );
-          })()
-        ) : (
-          <div
-            className={`${styleDef.cls} ${timerSize} ${timerColor} leading-none tabular-nums transition-colors duration-300`}
-          >
-            {formatHms(focus.displayElapsedSec)}
-          </div>
-        )}
+        {/* fixed-em stage with an animated height: switching clock styles
+            (esp. Stacked, which is two rows tall) GLIDES the layout around
+            the timer instead of teleporting it */}
+        <div
+          className="flex flex-col items-center justify-center overflow-hidden transition-[height] duration-300 ease-out"
+          style={{
+            fontSize: 'clamp(52px,11vw,96px)',
+            height: styleDef.id === 'stack' ? '1.9em' : '1.05em',
+          }}
+        >
+          {styleDef.id === 'stack' ? (
+            (() => {
+              // Apple StandBy look: time stacked in two heavy rows
+              const total = Math.floor(focus.displayElapsedSec);
+              const h = Math.floor(total / 3600);
+              const m = Math.floor((total % 3600) / 60);
+              const s = total % 60;
+              const top = h > 0 ? `${h}:${String(m).padStart(2, '0')}` : String(m).padStart(2, '0');
+              return (
+                <div className="flex flex-col items-center leading-[0.9] tabular-nums">
+                  <span
+                    className={`${styleDef.cls} transition-colors duration-300 ${paused ? 'text-text-faint' : 'text-text'}`}
+                  >
+                    {top}
+                  </span>
+                  <span className={`${styleDef.cls} ${timerColor} transition-colors duration-300`}>
+                    {String(s).padStart(2, '0')}
+                  </span>
+                </div>
+              );
+            })()
+          ) : (
+            <div
+              className={`${styleDef.cls} ${timerColor} leading-none tabular-nums transition-colors duration-300`}
+            >
+              {formatHms(focus.displayElapsedSec)}
+            </div>
+          )}
+        </div>
 
         {/* paused hint: animated height+fade so the timer glides instead of jumping */}
         <div
@@ -344,9 +354,10 @@ export function Home({
       <div
         className="animate-fade-in flex h-full items-center justify-center px-6"
         style={{
-          // vignette instead of a flat scrim — no hard rectangle edge behind the card
+          // vignette that dies out well before the edges — zero hard lines
+          // against the titlebar or page borders
           background:
-            'radial-gradient(ellipse 70% 65% at 50% 48%, rgba(0,0,0,0.5), rgba(0,0,0,0.18) 75%, transparent 100%)',
+            'radial-gradient(ellipse 55% 52% at 50% 50%, rgba(0,0,0,0.5), transparent 76%)',
         }}
       >
         <div
@@ -381,7 +392,7 @@ export function Home({
                 key={n}
                 type="button"
                 onClick={() => setRating(rating === n ? null : n)}
-                className={`h-11 flex-1 rounded-xl text-[15px] font-semibold transition-colors duration-200 ${
+                className={`no-press h-11 flex-1 rounded-xl text-[15px] font-semibold transition-colors duration-200 ${
                   rating === n
                     ? 'bg-surface-hover text-accent'
                     : 'text-text-faint hover:text-text-dim'
@@ -413,7 +424,7 @@ export function Home({
                   key={opt.sec}
                   type="button"
                   onClick={() => setBreakChoice(opt.sec)}
-                  className={`h-10 flex-1 rounded-xl text-[13px] font-semibold transition-colors duration-200 ${
+                  className={`no-press h-10 flex-1 rounded-xl text-[13px] font-semibold transition-colors duration-200 ${
                     breakChoice === opt.sec
                       ? 'bg-surface-hover text-accent'
                       : 'text-text-faint hover:text-text-dim'
@@ -425,7 +436,7 @@ export function Home({
               <button
                 type="button"
                 onClick={() => setBreakChoice(null)}
-                className={`h-10 flex-1 rounded-xl text-[13px] font-semibold transition-colors duration-200 ${
+                className={`no-press h-10 flex-1 rounded-xl text-[13px] font-semibold transition-colors duration-200 ${
                   breakChoice === null
                     ? 'bg-surface-hover text-accent'
                     : 'text-text-faint hover:text-text-dim'
