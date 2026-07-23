@@ -61,7 +61,18 @@ const TOUR_LABEL_KEY: Record<TourTab, string> = {
   ranking: 'tab.ranking',
 };
 
-const STEPS = ['welcome', 'goal', 'autotrack', 'accent', 'extras', 'tour', 'social', 'loading'] as const;
+/** Role presets — picking what you do preselects the right auto-track apps. */
+const WORK_ROLES = [
+  { id: 'dev', apps: ['visual studio code', 'intellij idea', 'android studio'] },
+  { id: 'design', apps: ['figma', 'photoshop', 'aseprite'] },
+  { id: 'game', apps: ['roblox studio', 'unity', 'godot', 'blender'] },
+  { id: 'video', apps: ['premiere pro', 'after effects', 'davinci resolve', 'obs'] },
+  { id: 'music', apps: ['fl studio', 'ableton live'] },
+  { id: 'study', apps: ['word', 'excel', 'powerpoint', 'notion', 'obsidian'] },
+] as const;
+type WorkRole = (typeof WORK_ROLES)[number]['id'];
+
+const STEPS = ['welcome', 'name', 'work', 'goal', 'autotrack', 'accent', 'extras', 'tour', 'social', 'loading'] as const;
 type Step = (typeof STEPS)[number];
 
 const RING_R = 50;
@@ -72,6 +83,8 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
   const step: Step = STEPS[stepIdx];
 
   // local selections — committed to settings as the user picks them
+  const [name, setName] = useState(settings.user_name ?? '');
+  const [roles, setRoles] = useState<Set<WorkRole>>(new Set());
   const [goal, setGoal] = useState(settings.daily_goal_hours || 3);
   const [autotrackOn, setAutotrackOn] = useState(settings.autotrack_enabled);
   const [apps, setApps] = useState<Set<string>>(() => {
@@ -108,8 +121,32 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
     if (list) update('autotrack_apps', list);
   };
 
-  const next = () => setStepIdx((i) => Math.min(i + 1, STEPS.length - 1));
+  const next = () => {
+    if (step === 'name') {
+      const n = name.trim();
+      if (n) update('user_name', n);
+    }
+    setStepIdx((i) => Math.min(i + 1, STEPS.length - 1));
+  };
   const back = () => setStepIdx((i) => Math.max(i - 1, 0));
+
+  const firstName = name.trim().split(/\s+/)[0] ?? '';
+
+  const toggleRole = (id: WorkRole) => {
+    const nextRoles = new Set(roles);
+    if (nextRoles.has(id)) nextRoles.delete(id);
+    else nextRoles.add(id);
+    setRoles(nextRoles);
+    // apps derive from the selected roles; the autotrack step refines them
+    const preset = new Set<string>();
+    for (const role of WORK_ROLES) {
+      if (nextRoles.has(role.id)) role.apps.forEach((a) => preset.add(a));
+    }
+    setApps(preset);
+    const on = nextRoles.size > 0 ? true : autotrackOn;
+    setAutotrackOn(on);
+    commitApps(on, preset, customApps);
+  };
 
   const finish = () => {
     if (finishedRef.current) return;
@@ -250,10 +287,62 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
             </>
           )}
 
+          {step === 'name' && (
+            <>
+              <div>
+                <h2 className="text-2xl font-extrabold text-text">{t('ob.name.title')}</h2>
+                <p className="mt-2 text-sm font-medium text-text-dim">{t('ob.name.sub')}</p>
+              </div>
+              <form
+                className="w-full max-w-xs"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  next();
+                }}
+              >
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={t('ob.name.ph')}
+                  maxLength={40}
+                  autoFocus
+                  className="w-full rounded-full bg-surface px-6 py-4 text-center text-lg font-extrabold text-text outline-none transition-colors placeholder:font-semibold placeholder:text-text-faint"
+                />
+              </form>
+            </>
+          )}
+
+          {step === 'work' && (
+            <>
+              <div>
+                <h2 className="text-2xl font-extrabold text-text">{t('ob.work.title')}</h2>
+                <p className="mt-2 text-sm font-medium text-text-dim">{t('ob.work.sub')}</p>
+              </div>
+              <div className="flex max-w-md flex-wrap justify-center gap-2">
+                {WORK_ROLES.map((role) => (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => toggleRole(role.id)}
+                    className={`no-press rounded-2xl px-5 py-3 text-[15px] font-extrabold transition-colors duration-300 ${
+                      roles.has(role.id)
+                        ? 'bg-accent text-bg'
+                        : 'bg-surface text-text-dim hover:text-text'
+                    }`}
+                  >
+                    {t(`ob.work.${role.id}`)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {step === 'goal' && (
             <>
               <div>
-                <h2 className="text-2xl font-extrabold text-text">{t('ob.goal.title')}</h2>
+                <h2 className="text-2xl font-extrabold text-text">
+                  {firstName ? t('ob.goal.title.named', firstName) : t('ob.goal.title')}
+                </h2>
                 <p className="mt-2 text-sm font-medium text-text-dim">{t('ob.goal.sub')}</p>
               </div>
               <div className="flex flex-wrap justify-center gap-2">
@@ -290,6 +379,13 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
                   commitApps(v, apps, customApps);
                 })}
               </div>
+              <p className="flex items-center justify-center gap-2 text-[12px] font-medium text-text-faint">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 2.5 4.5 5.5v6c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5v-6z" />
+                  <path d="m9 12 2 2 4-4.5" />
+                </svg>
+                {t('ob.auto.privacy')}
+              </p>
               {/* app list slides open under the toggle — no scroll, no pop-in */}
               <div
                 className={`grid w-full transition-all duration-500 ease-out ${

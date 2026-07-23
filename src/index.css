@@ -2,6 +2,24 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/jetbrains-mono';
 
+/* registered so an accent swap TWEENS through every var()/color-mix user
+   (onboarding color picker, Settings palette) instead of snapping */
+@property --color-accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #d4ff3f;
+}
+@property --color-accent-dim {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(212, 255, 63, 0.12);
+}
+:root {
+  transition:
+    --color-accent 400ms ease,
+    --color-accent-dim 400ms ease;
+}
+
 @theme {
   /* ~20% lighter across the board — "tudo MUITO escuro" feedback */
   --color-bg: #121215;
