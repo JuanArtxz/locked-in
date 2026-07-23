@@ -596,6 +596,103 @@ function FriendProfile({
   );
 }
 
+/** Right-hand details rail — the third column that appears next to an open DM:
+ *  identity, this-week stats and quick actions, reference-dashboard style. */
+function ChatDetailsPanel({
+  friend,
+  soc,
+  jam,
+  onViewProfile,
+  onError,
+}: {
+  friend: FriendEntry;
+  soc: FriendsProps['social'];
+  jam: { label: string; run: () => void } | null;
+  onViewProfile: () => void;
+  onError: (m: string) => void;
+}) {
+  const [pokeSent, setPokeSent] = useState(false);
+  const row = soc.presence.get(friend.userId);
+  const status = soc.statusOf(friend.userId);
+  const wk = social.weekKey();
+  const weekSec = row && row.week_key === wk ? row.week_sec : 0;
+  let bd = 0;
+  let bs = 0;
+  try {
+    if (row?.records) {
+      const r = JSON.parse(row.records) as { bd?: number; bs?: number };
+      bd = r.bd ?? 0;
+      bs = r.bs ?? 0;
+    }
+  } catch {
+    /* malformed records — zeros */
+  }
+  return (
+    <aside className="scrollbar-none hidden w-[290px] shrink-0 flex-col gap-4 overflow-y-auto py-4 pr-4 xl:flex">
+      <div className="chunk flex flex-col items-center gap-1.5 p-6 text-center">
+        <Avatar name={friend.username} status={status} photo={friend.avatar} size="h-20 w-20" />
+        <div className="mt-2 w-full truncate text-base font-extrabold text-text">
+          @{friend.username}
+        </div>
+        <div className={`w-full truncate text-xs font-semibold ${statusText(status)}`}>
+          {statusLineFor(status, row, friend.statusText, friend.username)}
+        </div>
+      </div>
+
+      <div className="chunk p-5">
+        <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-faint">
+          {t('fr.profile.weeklabel')}
+        </div>
+        <div className="mt-1.5 font-mono text-2xl font-extrabold tabular-nums text-text">
+          {formatDurationShort(weekSec)}
+        </div>
+        <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-[12px] font-semibold text-text-dim">
+          <div className="flex justify-between">
+            <span className="text-text-faint">{t('rank.bestday')}</span>
+            <span className="font-mono tabular-nums">{bd > 0 ? formatDurationShort(bd) : '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-text-faint">{t('rank.bestsession')}</span>
+            <span className="font-mono tabular-nums">{bs > 0 ? formatDurationShort(bs) : '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {jam && (
+          <button
+            type="button"
+            onClick={jam.run}
+            className="chunk-btn chunk-btn-accent py-2.5 text-[13px]"
+          >
+            {jam.label}
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={pokeSent}
+          onClick={() =>
+            social.sendPoke(friend.userId, 'poke').then((err) => {
+              if (err) onError(err);
+              else setPokeSent(true);
+            })
+          }
+          className="chunk-btn py-2.5 text-[13px] text-text"
+        >
+          {pokeSent ? t('poke.sent') : t('poke.cta')}
+        </button>
+        <button
+          type="button"
+          onClick={onViewProfile}
+          className="chunk-btn py-2.5 text-[13px] text-text-dim"
+        >
+          {t('fr.viewprofile')}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 export function FriendsPage({
   signedIn,
   social: soc,
@@ -1506,6 +1603,29 @@ export function FriendsPage({
           </div>
         )}
       </main>
+
+      {/* third column: details rail for the open DM (wide windows only) */}
+      {chattingFriend && (
+        <ChatDetailsPanel
+          friend={chattingFriend}
+          soc={soc}
+          jam={
+            myFocus.inJam
+              ? null
+              : myFocus.focusing
+                ? { label: t('jam.invite'), run: () => onSendJam(chattingFriend, 'invite') }
+                : soc.statusOf(chattingFriend.userId) === 'focusing'
+                  ? { label: t('jam.request'), run: () => onSendJam(chattingFriend, 'request') }
+                  : { label: t('jam.create'), run: () => onSendJam(chattingFriend, 'invite') }
+          }
+          onViewProfile={() => {
+            setChatting(null);
+            onChatOpened(null);
+            setViewing(chattingFriend.userId);
+          }}
+          onError={onError}
+        />
+      )}
 
       {creatingGroup && (
         <CreateGroupModal
