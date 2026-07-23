@@ -437,6 +437,10 @@ const dict: Record<string, { pt: string; en: string }> = {
 
   // goals
   'goals.title': { pt: 'Metas por projeto', en: 'Project goals' },
+  'goals.delete.body': {
+    pt: 'A meta de "{0}" será apagada. As horas já focadas continuam no histórico.',
+    en: 'The "{0}" goal will be deleted. Hours already focused stay in your history.',
+  },
   'goals.sub': {
     pt: 'Define um alvo de horas e acompanha o ritmo.',
     en: 'Set an hours target and track your pace.',

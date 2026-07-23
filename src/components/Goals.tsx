@@ -3,6 +3,7 @@ import * as db from '../lib/db';
 import { dateLocale, t } from '../lib/i18n';
 import { formatDurationShort } from '../lib/time';
 import type { ProjectGoal } from '../types';
+import { ConfirmModal } from './Confirm';
 import { Mascot } from './Mascot';
 
 interface GoalsProps {
@@ -22,7 +23,7 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
   const [project, setProject] = useState('');
   const [hours, setHours] = useState(20);
   const [deadline, setDeadline] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ProjectGoal | null>(null);
 
   const reload = useCallback(() => {
     Promise.all([db.listGoals(), db.listProjects()])
@@ -66,12 +67,6 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
   }
 
   async function remove(id: number) {
-    if (confirmDelete !== id) {
-      setConfirmDelete(id);
-      window.setTimeout(() => setConfirmDelete((c) => (c === id ? null : c)), 3000);
-      return;
-    }
-    setConfirmDelete(null);
     try {
       await db.deleteGoal(id);
       reload();
@@ -240,14 +235,10 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
                   </span>
                   <button
                     type="button"
-                    onClick={() => remove(goal.id)}
-                    className={`rounded-full px-2.5 py-1 text-xs transition-opacity ${
-                      confirmDelete === goal.id
-                        ? 'bg-danger/15 font-bold text-danger opacity-100'
-                        : 'text-text-faint opacity-0 hover:text-danger group-hover:opacity-100'
-                    }`}
+                    onClick={() => setConfirmDelete(goal)}
+                    className="rounded-full px-2.5 py-1 text-xs text-text-faint opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
                   >
-                    {confirmDelete === goal.id ? t('misc.sure') : '✕'}
+                    ✕
                   </button>
                 </div>
               </div>
@@ -291,6 +282,16 @@ export function GoalsPage({ onError, refreshKey }: GoalsProps) {
           );
         })}
       </div>
+
+      {confirmDelete && (
+        <ConfirmModal
+          title={confirmDelete.project}
+          body={t('goals.delete.body', confirmDelete.project)}
+          confirmLabel={t('misc.delete')}
+          onConfirm={() => remove(confirmDelete.id)}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }
