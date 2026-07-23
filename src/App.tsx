@@ -803,6 +803,7 @@ function AppShell() {
         details: '',
         state: '',
         startEpoch: null,
+        partyId: null,
         partyCount: null,
         partyMax: null,
         joinSecret: null,
@@ -814,13 +815,19 @@ function AppShell() {
     let details = '';
     let state = '';
     let startEpoch: number | null = null;
+    let partyId: string | null = null;
     let partyCount: number | null = null;
     let partyMax: number | null = null;
     let joinSecret: string | null = null;
+    const myId = social.state?.me?.user_id ?? null;
+    const myName = social.state?.me?.username ?? null;
     if (sess && (focus.phase === 'focusing' || focus.phase === 'paused')) {
       details = sess.project || sess.task || '';
       if (focus.phase === 'paused') state = t('dp.paused');
       if (focus.jam) {
+        // id shared by everyone in THIS jam (host's session start) — discord
+        // clusters same-id users as "playing together" and shows their avatars
+        partyId = `jam-${Math.floor(new Date(focus.jam.startedAt).getTime() / 1000)}`;
         partyCount = focus.jam.members.length;
         partyMax = 5;
       }
@@ -829,10 +836,10 @@ function AppShell() {
         // solo session -> Discord "Join" button: the clicker's app sends the
         // normal jam REQUEST, so the host still approves in-app. 1:1 jams are
         // closed at two people, so a running jam never advertises a secret.
-        const meProfile = social.state?.me;
-        if (!focus.jam && signedIn && meProfile) {
+        if (!focus.jam && signedIn && myId && myName) {
           const safeTask = (sess.task || '').replace(/\|/g, '/').slice(0, 40);
-          joinSecret = `1|${meProfile.user_id}|${meProfile.username}|${startEpoch}|${safeTask}`;
+          joinSecret = `1|${myId}|${myName}|${startEpoch}|${safeTask}`;
+          partyId = `solo-${myId}`;
           partyCount = 1;
           partyMax = 2;
         }
@@ -848,6 +855,7 @@ function AppShell() {
       details,
       state,
       startEpoch,
+      partyId,
       partyCount,
       partyMax,
       joinSecret,
@@ -859,7 +867,8 @@ function AppShell() {
     focus.jam,
     todaySec,
     signedIn,
-    social.state?.me,
+    social.state?.me?.user_id,
+    social.state?.me?.username,
     settingsHook.settings?.discord_presence_enabled,
     settingsHook.settings?.language,
   ]);
@@ -1279,6 +1288,11 @@ function AppShell() {
     const [, uid, uname, epoch, ...taskParts] = parts;
     if (!signedIn) return;
     if (social.state?.me?.user_id === uid) return;
+    // already jamming (any size) — 1:1 flows are closed, same rule as sendJam
+    if (activeGroupJamRef.current !== null || focusRef.current.jam) {
+      pushToast(t('jam.selfbusy'), 'info');
+      return;
+    }
     const task = taskParts.join('|') || t('jam.generic');
     const startedAt = new Date(Number(epoch) * 1000).toISOString();
     jam.send(uid, uname, 'request', task, startedAt).then((err) => {

@@ -833,6 +833,7 @@ struct PresenceData {
   details: String,
   state: String,
   start_epoch: Option<i64>,
+  party_id: Option<String>,
   party_count: Option<i32>,
   party_max: Option<i32>,
   join_secret: Option<String>,
@@ -891,8 +892,11 @@ fn start_presence_thread() {
           if let Some(ts) = p.start_epoch {
             act = act.timestamps(activity::Timestamps::new().start(ts));
           }
-          if let (Some(n), Some(max)) = (p.party_count, p.party_max) {
-            act = act.party(activity::Party::new().id("jam").size([n, max]));
+          // party id must be UNIQUE per jam — discord groups every user sharing
+          // an id into one "playing together" cluster (avatars on invites)
+          if let (Some(id), Some(n), Some(max)) = (p.party_id.as_deref(), p.party_count, p.party_max)
+          {
+            act = act.party(activity::Party::new().id(id).size([n, max]));
           }
           // join secret -> discord renders the "Join" button on the profile card;
           // clicking it fires ACTIVITY_JOIN on the clicker's own app (thread below)
@@ -917,6 +921,7 @@ fn discord_presence(
   details: String,
   state: String,
   start_epoch: Option<i64>,
+  party_id: Option<String>,
   party_count: Option<i32>,
   party_max: Option<i32>,
   join_secret: Option<String>,
@@ -927,6 +932,7 @@ fn discord_presence(
       details,
       state,
       start_epoch,
+      party_id,
       party_count,
       party_max,
       join_secret,
@@ -942,8 +948,14 @@ fn start_presence_events(app: tauri::AppHandle) {
   std::thread::spawn(move || {
     use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
     let mut nonce: u64 = 0;
+    let mut first = true;
     loop {
-      std::thread::sleep(std::time::Duration::from_secs(10));
+      // no delay on the very first attempt — when discord LAUNCHES the app via
+      // the join button, the pending ACTIVITY_JOIN should arrive immediately
+      if !first {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+      }
+      first = false;
       let Ok(mut c) = DiscordIpcClient::new(DISCORD_APP_ID) else { continue };
       if c.connect().is_err() {
         continue;
