@@ -580,6 +580,8 @@ export function ChatView({
   const [theme, setTheme] = useState<string | null>(() => themesMap()[friend.userId] ?? null);
   const [recording, setRecording] = useState(false);
   const [recSec, setRecSec] = useState(0);
+  // WhatsApp-style: the finished recording stages here for preview/send/delete
+  const [pendingVoice, setPendingVoice] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<number | null>(null);
@@ -656,16 +658,7 @@ export function ChatView({
           fr.onload = () => res(String(fr.result));
           fr.readAsDataURL(blob);
         });
-        // Storage first; inline data-url only as the offline fallback
-        let body = await media.uploadEncrypted(dataUrl);
-        if (!body && dataUrl.length <= 110_000) body = dataUrl;
-        if (!body) {
-          onError(t('msg.voice.toobig'));
-          return;
-        }
-        const r = await chat.sendMessage(friend.userId, 'voice', body);
-        if (r === 'ok') reload();
-        else handleSendError(r);
+        setPendingVoice(dataUrl);
       };
       recorderRef.current = rec;
       rec.start();
@@ -836,6 +829,26 @@ export function ChatView({
   }
 
   async function send() {
+    // staged voice note goes out first (it sat in the composer as a preview)
+    if (pendingVoice) {
+      const v = pendingVoice;
+      setPendingVoice(null);
+      // Storage first; inline data-url only as the offline fallback
+      let vb = await media.uploadEncrypted(v);
+      if (!vb && v.length <= 110_000) vb = v;
+      if (!vb) {
+        setPendingVoice(v);
+        onError(t('msg.voice.toobig'));
+        return;
+      }
+      const rv = await chat.sendMessage(friend.userId, 'voice', vb);
+      if (rv === 'ok') reload();
+      else {
+        setPendingVoice(v); // keep the recording on failure
+        handleSendError(rv);
+        return;
+      }
+    }
     // staged image goes out first (Discord-style: it sat in the composer)
     if (pendingImg) {
       const img = pendingImg;
@@ -1527,6 +1540,24 @@ export function ChatView({
         </div>
       )}
 
+      {/* staged voice note — listen, then send or discard */}
+      {pendingVoice && (
+        <div className="animate-fade-in flex shrink-0 items-center gap-3 bg-white/[0.03] px-4 py-2.5">
+          <div className="flex items-center rounded-full bg-bg/60 px-3 py-1.5">
+            <VoicePlayer src={pendingVoice} mine={false} />
+          </div>
+          <span className="min-w-0 flex-1" />
+          <button
+            type="button"
+            onClick={() => setPendingVoice(null)}
+            title={t('msg.delete')}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-faint transition-colors hover:bg-danger/10 hover:text-danger"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* reply bar */}
       {replyTo && (
         <div className="animate-fade-in flex shrink-0 items-center justify-between gap-2 border-t border-border bg-surface px-4 py-2">
@@ -1570,7 +1601,7 @@ export function ChatView({
             <span className="h-2 w-2 animate-pulse-dot rounded-full bg-danger" />{' '}
             {fmtVoiceSec(recSec)} ■
           </button>
-        ) : (
+        ) : pendingVoice ? null : (
           <button
             type="button"
             onClick={startRecording}
@@ -1721,14 +1752,14 @@ export function ChatView({
         {/* animated slot: the pill re-lays-out smoothly as this width tweens */}
         <div
           className="shrink-0 overflow-hidden transition-[width] duration-200 ease-out"
-          style={{ width: draft.trim() || pendingImg ? 42 : 0 }}
+          style={{ width: draft.trim() || pendingImg || pendingVoice ? '2.65rem' : 0 }}
         >
           <button
             type="submit"
-            disabled={!draft.trim() && !pendingImg}
+            disabled={!draft.trim() && !pendingImg && !pendingVoice}
             title={t('msg.send')}
             className={`ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-bg transition-all duration-200 ease-out ${
-              draft.trim() || pendingImg ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+              draft.trim() || pendingImg || pendingVoice ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
             }`}
             style={theme ? { backgroundColor: theme } : undefined}
           >

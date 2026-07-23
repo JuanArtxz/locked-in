@@ -427,6 +427,8 @@ export function GroupView({
 
   // staged image + reply + voice recording (mirrors the DM composer)
   const [pendingImg, setPendingImg] = useState<string | null>(null);
+  // WhatsApp-style staged voice note (preview -> send or discard)
+  const [pendingVoice, setPendingVoice] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<GroupMessage | null>(null);
   const [reactFor, setReactFor] = useState<number | null>(null);
   const [menuFor, setMenuFor] = useState<number | null>(null);
@@ -469,6 +471,22 @@ export function GroupView({
   }
 
   async function send() {
+    if (pendingVoice) {
+      const v = pendingVoice;
+      setPendingVoice(null);
+      const vm = await media.uploadEncrypted(v);
+      if (!vm) {
+        setPendingVoice(v);
+        onError(t('msg.voice.toobig'));
+        return;
+      }
+      const ev = await groups.sendGroupMessage(group.id, 'voice', vm, null);
+      if (ev) {
+        setPendingVoice(v);
+        onError(ev);
+        return;
+      }
+    }
     if (pendingImg) {
       const img = pendingImg;
       setPendingImg(null);
@@ -553,14 +571,7 @@ export function GroupView({
           fr.onload = () => res(String(fr.result));
           fr.readAsDataURL(blob);
         });
-        const marker = await media.uploadEncrypted(dataUrl);
-        if (!marker) {
-          onError(t('msg.voice.toobig'));
-          return;
-        }
-        const err = await groups.sendGroupMessage(group.id, 'voice', marker, null);
-        if (err) onError(err);
-        reload();
+        setPendingVoice(dataUrl);
       };
       recorderRef.current = rec;
       rec.start();
@@ -1405,6 +1416,22 @@ export function GroupView({
             </button>
           </div>
         )}
+        {pendingVoice && (
+          <div className="animate-fade-in flex items-center gap-3 bg-white/[0.03] px-4 py-2.5">
+            <div className="flex items-center rounded-full bg-bg/60 px-3 py-1.5">
+              <VoicePlayer src={pendingVoice} mine={false} />
+            </div>
+            <span className="min-w-0 flex-1" />
+            <button
+              type="button"
+              onClick={() => setPendingVoice(null)}
+              title={t('msg.delete')}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-faint transition-colors hover:bg-danger/10 hover:text-danger"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1450,7 +1477,7 @@ export function GroupView({
               <span className="h-2 w-2 animate-pulse-dot rounded-full bg-danger" />{' '}
               {fmtVoiceSec(recSec)} ■
             </button>
-          ) : (
+          ) : pendingVoice ? null : (
             <button
               type="button"
               onClick={startRecording}
@@ -1559,13 +1586,13 @@ export function GroupView({
           {/* animated slot: icons glide aside as this width tweens */}
           <div
             className="shrink-0 overflow-hidden transition-[width] duration-200 ease-out"
-            style={{ width: draft.trim() || pendingImg ? 42 : 0 }}
+            style={{ width: draft.trim() || pendingImg || pendingVoice ? '2.65rem' : 0 }}
           >
             <button
               type="submit"
-              disabled={!draft.trim() && !pendingImg}
+              disabled={!draft.trim() && !pendingImg && !pendingVoice}
               className={`ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-bg transition-all duration-200 ease-out ${
-                draft.trim() || pendingImg ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+                draft.trim() || pendingImg || pendingVoice ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
               }`}
               style={theme ? { backgroundColor: theme } : undefined}
             >
