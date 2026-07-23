@@ -275,23 +275,33 @@ export function Home({
             return (
               <div className="flex flex-col items-center leading-[0.9] tabular-nums">
                 <span
-                  className={`${styleDef.cls} ${timerSize} ${paused ? 'text-text-faint' : 'text-text'}`}
+                  className={`${styleDef.cls} ${timerSize} transition-colors duration-300 ${paused ? 'text-text-faint' : 'text-text'}`}
                 >
                   {top}
                 </span>
-                <span className={`${styleDef.cls} ${timerSize} ${timerColor}`}>
+                <span className={`${styleDef.cls} ${timerSize} ${timerColor} transition-colors duration-300`}>
                   {String(s).padStart(2, '0')}
                 </span>
               </div>
             );
           })()
         ) : (
-          <div className={`${styleDef.cls} ${timerSize} ${timerColor} leading-none tabular-nums`}>
+          <div
+            className={`${styleDef.cls} ${timerSize} ${timerColor} leading-none tabular-nums transition-colors duration-300`}
+          >
             {formatHms(focus.displayElapsedSec)}
           </div>
         )}
 
-        {paused && <span className="text-xs text-text-faint">{t('home.paused.hint')}</span>}
+        {/* paused hint: animated height+fade so the timer glides instead of jumping */}
+        <div
+          className={`overflow-hidden text-center transition-all duration-300 ease-out ${
+            paused ? 'max-h-6 translate-y-0 opacity-100' : 'max-h-0 -translate-y-1 opacity-0'
+          }`}
+          aria-hidden={!paused}
+        >
+          <span className="text-xs text-text-faint">{t('home.paused.hint')}</span>
+        </div>
 
         <div className="flex items-center gap-2.5">
           {paused ? (
@@ -340,8 +350,12 @@ export function Home({
         }}
       >
         <div
-          className="animate-scale-in cascade w-full max-w-md rounded-3xl border border-border bg-surface p-7"
+          className="animate-scale-in cascade w-full max-w-md rounded-3xl border border-border bg-surface p-7 [border-top-color:rgba(255,255,255,0.13)]"
           style={{
+            // strong top light so the card's upper edge blends into the scene
+            // instead of reading as a cut line
+            backgroundImage:
+              'linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.02) 30%, transparent 60%)',
             boxShadow:
               '0 1px 2px rgba(0,0,0,0.4), 0 24px 70px -18px rgba(0,0,0,0.6), 0 60px 140px -30px rgba(0,0,0,0.45)',
           }}
