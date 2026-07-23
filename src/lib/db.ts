@@ -813,6 +813,7 @@ const SETTINGS_DEFAULTS: Settings = {
   friends_bar_enabled: true,
   pomodoro_enabled: false,
   telemetry_enabled: false,
+  discord_presence_enabled: true,
   clock_style: 'classic',
   focus_minimal: false,
 };

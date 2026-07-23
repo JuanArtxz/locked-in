@@ -37,6 +37,8 @@ winreg = "0.56.0"
 base64 = "0.22.1"
 # same version wry already links — used to auto-allow microphone permission
 webview2-com = "0.38"
+# Discord Rich Presence over the local IPC pipe (no token, public app id)
+discord-rich-presence = "0.2"
 
 [dependencies.windows]
 version = "0.61"

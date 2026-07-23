@@ -689,6 +689,12 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
               onChange={(v) => update('telemetry_enabled', v)}
             />
           </Field>
+          <Field label={t('set.discord')} hint={t('set.discord.hint')}>
+            <Toggle
+              checked={settings.discord_presence_enabled}
+              onChange={(v) => update('discord_presence_enabled', v)}
+            />
+          </Field>
         </Section>
 
         <Section title={t('set.data')}>

@@ -95,6 +95,7 @@ export interface Settings {
   pomodoro_enabled: boolean;
   /** opt-in crash reports — OFF by default, never message content */
   telemetry_enabled: boolean;
+  discord_presence_enabled: boolean;
   /** focus-screen timer look: classic | thin | mono | serif | stack */
   clock_style: string;
   /** minimal focus mode: only the timer; task/buttons/mascot appear on hover */

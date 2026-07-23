@@ -768,6 +768,36 @@ function AppShell() {
     if (focus.error) onError(focus.error);
   }, [focus.error, onError]);
 
+  // discord rich presence mirrors the focus state (project + elapsed timer)
+  useEffect(() => {
+    const enabled = settingsHook.settings?.discord_presence_enabled ?? true;
+    if (!enabled) {
+      invoke('discord_presence', { details: '', state: '', startEpoch: null, clear: true }).catch(
+        () => {},
+      );
+      return;
+    }
+    const sess = focus.activeSession;
+    let details = '';
+    let state = t('dp.idle');
+    let startEpoch: number | null = null;
+    if (sess && (focus.phase === 'focusing' || focus.phase === 'paused')) {
+      details = sess.task || t('dp.focusing');
+      state = focus.phase === 'paused' ? t('dp.paused') : sess.project || t('dp.focusing');
+      if (focus.phase === 'focusing') {
+        startEpoch = Math.floor(new Date(sess.started_at).getTime() / 1000);
+      }
+    } else if (focus.phase === 'break') {
+      state = t('dp.break');
+    }
+    invoke('discord_presence', { details, state, startEpoch, clear: false }).catch(() => {});
+  }, [
+    focus.phase,
+    focus.activeSession,
+    settingsHook.settings?.discord_presence_enabled,
+    settingsHook.settings?.language,
+  ]);
+
   const prevPhase = useRef(focus.phase);
   useEffect(() => {
     const prev = prevPhase.current;

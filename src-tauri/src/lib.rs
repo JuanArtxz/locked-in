@@ -821,6 +821,93 @@ fn insta_snooze(app: tauri::AppHandle, state: tauri::State<'_, Mutex<InstaState>
   remaining
 }
 
+// ---------- discord rich presence ----------
+// One background thread owns the IPC connection. Discord may be closed or
+// restart at any time, so every cycle (new message or 15s retry tick) it
+// lazily (re)connects and re-applies the latest presence.
+
+const DISCORD_APP_ID: &str = "0000000000000000000"; // Discord Developer Portal application id
+
+#[derive(Clone)]
+struct PresenceData {
+  details: String,
+  state: String,
+  start_epoch: Option<i64>,
+  clear: bool,
+}
+
+static PRESENCE_TX: std::sync::OnceLock<std::sync::mpsc::Sender<PresenceData>> =
+  std::sync::OnceLock::new();
+
+fn start_presence_thread() {
+  let (tx, rx) = std::sync::mpsc::channel::<PresenceData>();
+  let _ = PRESENCE_TX.set(tx);
+  std::thread::spawn(move || {
+    use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+    let mut client: Option<DiscordIpcClient> = None;
+    let mut current: Option<PresenceData> = None;
+    let mut dirty = false;
+    loop {
+      match rx.recv_timeout(std::time::Duration::from_secs(15)) {
+        Ok(msg) => {
+          current = Some(msg);
+          dirty = true;
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+          // retry tick: only re-apply if we lost the connection
+          dirty = dirty || client.is_none();
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+      }
+      let Some(p) = current.clone() else { continue };
+      if !dirty {
+        continue;
+      }
+      if client.is_none() {
+        if let Ok(mut c) = DiscordIpcClient::new(DISCORD_APP_ID) {
+          if c.connect().is_ok() {
+            client = Some(c);
+          }
+        }
+      }
+      if let Some(c) = client.as_mut() {
+        let ok = if p.clear {
+          c.clear_activity().is_ok()
+        } else {
+          let mut act = activity::Activity::new().assets(
+            activity::Assets::new()
+              .large_image("logo")
+              .large_text("Locked In"),
+          );
+          if !p.details.is_empty() {
+            act = act.details(&p.details);
+          }
+          if !p.state.is_empty() {
+            act = act.state(&p.state);
+          }
+          if let Some(ts) = p.start_epoch {
+            act = act.timestamps(activity::Timestamps::new().start(ts));
+          }
+          c.set_activity(act).is_ok()
+        };
+        if ok {
+          dirty = false;
+        } else {
+          // pipe died (discord closed) — drop and reconnect on the next cycle
+          client = None;
+        }
+      }
+    }
+  });
+}
+
+#[tauri::command]
+fn discord_presence(details: String, state: String, start_epoch: Option<i64>, clear: bool) {
+  if let Some(tx) = PRESENCE_TX.get() {
+    let _ = tx.send(PresenceData { details, state, start_epoch, clear });
+  }
+}
+
 fn migrations() -> Vec<Migration> {
   vec![
     Migration {
@@ -1297,11 +1384,15 @@ pub fn run() {
       save_canvas,
       load_canvas,
       dpapi_encrypt,
-      dpapi_decrypt
+      dpapi_decrypt,
+      discord_presence
     ])
     .setup(|app| {
       // fix dbs coming from legacy installers BEFORE the frontend loads the db
       heal_legacy_db(&app.handle());
+
+      // discord rich presence pipe (lazy — connects when discord is running)
+      start_presence_thread();
 
       // anti-instagram: restore today's usage, then start the native watcher
       let mut initial = InstaState::default();
