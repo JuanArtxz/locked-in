@@ -180,7 +180,7 @@ export function FriendsBar({
                 <div className="flex items-center gap-2.5">
                   <div className="relative shrink-0">
                     <div
-                      className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 text-[11px] font-extrabold uppercase ${
+                      className={`flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 text-xs font-extrabold uppercase ${
                         live
                           ? 'border-accent text-accent'
                           : status === 'online'
@@ -195,12 +195,12 @@ export function FriendsBar({
                       )}
                     </div>
                     <span
-                      className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg ${statusDot(status)}`}
+                      className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-bg ${statusDot(status)}`}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-bold text-text">{f.username}</div>
-                    <div className={`truncate text-[10px] font-semibold ${statusText(status)}`}>
+                    <div className="truncate text-sm font-bold text-text">{f.username}</div>
+                    <div className={`truncate text-[11px] font-semibold ${statusText(status)}`}>
                       {typingIds.has(f.userId) ? (
                         <span className="italic text-accent">{t('msg.typing')}</span>
                       ) : (

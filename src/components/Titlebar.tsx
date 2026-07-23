@@ -13,30 +13,30 @@ export interface TabDef {
 /* one outline icon per tab — inactive tabs collapse to icon-only bubbles */
 const NAV_ICONS: Record<string, ReactNode> = {
   home: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
     </svg>
   ),
   routine: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="m5 12.5 4.5 4.5L19 7.5" />
     </svg>
   ),
   analytics: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M5 20v-8M12 20V5M19 20v-11" />
     </svg>
   ),
   goals: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="12" r="9" />
       <circle cx="12" cy="12" r="4.2" />
       <circle cx="12" cy="12" r="0.6" fill="currentColor" />
     </svg>
   ),
   friends: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="9" cy="8" r="3.4" />
       <path d="M2.8 20c0-3.5 2.8-5.8 6.2-5.8s6.2 2.3 6.2 5.8" />
       <circle cx="17.3" cy="9" r="2.7" />
@@ -44,7 +44,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
     </svg>
   ),
   ranking: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M8 21h8M12 17v4M17 5h3a1 1 0 0 1 1 1c0 3-2 5-4.5 5.4M7 5H4a1 1 0 0 0-1 1c0 3 2 5 4.5 5.4" />
       <path d="M17 4v5a5 5 0 0 1-10 0V4z" />
     </svg>
@@ -117,8 +117,8 @@ export function Titlebar({
   const indReady = useRef(false);
 
   // the accent pill is a single element that GLIDES to the active tab.
-  // tab widths animate too (label collapses/expands), so we chase the button's
-  // real geometry for a few frames — the CSS transition smooths the pursuit.
+  // every tab keeps a constant width (icon+label always visible), so the bar
+  // never reflows — the pill is the only thing that moves.
   useLayoutEffect(() => {
     const ind = indRef.current;
     const btn = navRef.current?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
@@ -143,14 +143,25 @@ export function Titlebar({
       indReady.current = true;
       return;
     }
-    let raf = 0;
-    const t0 = performance.now();
-    const step = (now: number) => {
-      place();
-      if (now - t0 < 480) raf = requestAnimationFrame(step);
+    place();
+  }, [tab]);
+
+  // font load / locale change can shift label widths after first paint
+  useEffect(() => {
+    const onResize = () => {
+      const ind = indRef.current;
+      const btn = navRef.current?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+      if (!ind || !btn) return;
+      ind.style.transition = 'none';
+      ind.style.left = `${btn.offsetLeft}px`;
+      ind.style.width = `${btn.offsetWidth}px`;
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      ind.offsetWidth;
+      ind.style.transition = '';
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    window.addEventListener('resize', onResize);
+    document.fonts?.ready.then(onResize).catch(() => {});
+    return () => window.removeEventListener('resize', onResize);
   }, [tab]);
 
   useEffect(() => {
@@ -182,7 +193,7 @@ export function Titlebar({
   return (
     <header
       data-tauri-drag-region
-      className="relative flex h-[88px] shrink-0 select-none items-stretch gap-2 pl-2"
+      className="relative flex h-[72px] shrink-0 select-none items-stretch gap-2 pl-2"
     >
       {/* left: settings gear only */}
       <div data-tauri-drag-region className="flex items-center">
@@ -207,19 +218,18 @@ export function Titlebar({
       <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center justify-center">
         <nav
           ref={navRef}
-          className="nav-pill scrollbar-none relative flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-surface p-2"
+          className="nav-pill scrollbar-none relative flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-surface p-1.5"
         >
           {/* sliding accent indicator (behind the buttons) */}
           <span
             ref={indRef}
             aria-hidden
-            className="pointer-events-none absolute top-2 h-14 rounded-full bg-accent"
+            className="pointer-events-none absolute top-1.5 h-11 rounded-full bg-accent"
             style={{
               left: 0,
               width: 0,
               opacity: 0,
-              transition:
-                'left 320ms cubic-bezier(0.3, 0.9, 0.35, 1), width 320ms cubic-bezier(0.3, 0.9, 0.35, 1)',
+              transition: 'left 300ms cubic-bezier(0.3, 0.9, 0.35, 1)',
             }}
           />
           {tabs.map((tabDef) => {
@@ -231,19 +241,12 @@ export function Titlebar({
                 type="button"
                 data-tab={tabDef.id}
                 onClick={() => onTab(tabDef.id)}
-                title={t(tabDef.labelKey)}
-                className={`nav-tab relative z-10 flex h-14 shrink-0 items-center justify-center rounded-full px-[17px] text-sm font-bold transition-colors duration-200 ${
+                className={`nav-tab relative z-10 flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 text-[13px] font-bold transition-colors duration-200 ${
                   active ? 'text-bg' : 'text-text-dim hover:text-text'
                 }`}
               >
                 {NAV_ICONS[tabDef.id]}
-                <span
-                  className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ${
-                    active ? 'ml-2.5 max-w-[9rem] opacity-100' : 'ml-0 max-w-0 opacity-0'
-                  }`}
-                >
-                  {t(tabDef.labelKey)}
-                </span>
+                {t(tabDef.labelKey)}
                 {pending > 0 && (
                   <span
                     className={`absolute -right-0.5 -top-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-extrabold ${
@@ -268,9 +271,26 @@ export function Titlebar({
             type="button"
             onClick={() => setMenuOpen((o) => !o)}
             title={me ? `@${me.username}` : t('menu.account')}
-            className="transition-transform"
+            className="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-1 hover:bg-surface-hover sm:pl-3"
           >
-            {avatarCircle('h-9 w-9', 18)}
+            {me && (
+              <span className="hidden min-w-0 flex-col items-end leading-tight sm:flex">
+                <span className="max-w-32 truncate text-[13px] font-bold text-text">
+                  {userName || me.username}
+                </span>
+                <span className="max-w-32 truncate text-[11px] font-medium text-text-faint">
+                  @{me.username}
+                </span>
+              </span>
+            )}
+            <span className="relative shrink-0">
+              {avatarCircle('h-10 w-10', 19)}
+              {(social.state?.incoming.length ?? 0) > 0 && (
+                <span className="absolute -right-1 -top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-bg bg-danger px-1 text-[10px] font-extrabold text-white">
+                  {social.state?.incoming.length}
+                </span>
+              )}
+            </span>
           </button>
 
           {menuOpen && (
