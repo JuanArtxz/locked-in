@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/inter';
+@import '@fontsource-variable/geist';
 @import '@fontsource-variable/jetbrains-mono';
 
 @theme {
@@ -19,7 +19,7 @@
   --color-warn-dim: rgba(251, 191, 36, 0.12);
   --color-danger: #f87171;
 
-  --font-sans: 'Inter Variable', system-ui, 'Segoe UI', sans-serif;
+  --font-sans: 'Geist Variable', system-ui, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, Consolas, monospace;
 
   --animate-fade-up: fade-up 0.16s ease-out both;
@@ -236,22 +236,22 @@
 .chunk-btn:disabled {
   opacity: 0.45;
 }
-/* primary accent variant — the big call-to-action buttons: lime glow */
+/* primary accent variant — the big call-to-action buttons */
 .chunk-btn-accent {
   border-color: transparent;
   background: var(--color-accent);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 60%);
   color: var(--color-bg);
   box-shadow:
-    0 2px 10px color-mix(in srgb, var(--color-accent) 22%, transparent),
-    0 12px 30px -8px color-mix(in srgb, var(--color-accent) 30%, transparent);
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 8px 20px -8px rgba(0, 0, 0, 0.35);
 }
 .chunk-btn-accent:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-accent) 92%, #fff);
   border-color: transparent;
   box-shadow:
-    0 3px 14px color-mix(in srgb, var(--color-accent) 30%, transparent),
-    0 16px 36px -8px color-mix(in srgb, var(--color-accent) 38%, transparent);
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 12px 28px -8px rgba(0, 0, 0, 0.45);
 }
 .chunk-btn-accent:active:not(:disabled) {
   transform: translateY(0) scale(0.98);
@@ -295,13 +295,13 @@ button {
     0 10px 26px -10px rgba(0, 0, 0, 0.4);
 }
 
-/* accent (primary) buttons — lime glow + lift, applied globally.
+/* accent (primary) buttons — flat lime, neutral depth, lift on hover.
    toggles (role=switch) are excluded so their pill/knob stay intact. */
 button.bg-accent:not([role='switch']) {
   border: 0;
   box-shadow:
-    0 2px 10px color-mix(in srgb, var(--color-accent) 20%, transparent),
-    0 10px 26px -8px color-mix(in srgb, var(--color-accent) 28%, transparent);
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 8px 20px -8px rgba(0, 0, 0, 0.35);
   font-weight: 700;
   transition:
     transform 140ms ease,
@@ -311,8 +311,8 @@ button.bg-accent:not([role='switch']) {
 button.bg-accent:not([role='switch']):hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow:
-    0 3px 14px color-mix(in srgb, var(--color-accent) 28%, transparent),
-    0 14px 32px -8px color-mix(in srgb, var(--color-accent) 36%, transparent);
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 12px 28px -8px rgba(0, 0, 0, 0.45);
 }
 button.bg-accent:not([role='switch']):active:not(:disabled) {
   transform: translateY(0) scale(0.98);
@@ -359,13 +359,25 @@ body,
 }
 
 body {
+  /* huge, barely-there accent glows scattered across the ground — the app's
+     ambient light. Buttons stay flat; the color lives back here. */
   background:
     radial-gradient(
-      ellipse 55% 40% at 50% -8%,
-      color-mix(in srgb, var(--color-accent) 4.5%, transparent),
-      transparent 62%
+      ellipse 60% 45% at 50% -8%,
+      color-mix(in srgb, var(--color-accent) 5%, transparent),
+      transparent 65%
     ),
-    radial-gradient(ellipse 90% 55% at 50% -12%, rgba(255, 255, 255, 0.04), transparent 65%),
+    radial-gradient(
+      ellipse 75% 60% at 8% 92%,
+      color-mix(in srgb, var(--color-accent) 3.5%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 65% 55% at 96% 45%,
+      color-mix(in srgb, var(--color-accent) 3%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(ellipse 90% 55% at 50% -12%, rgba(255, 255, 255, 0.035), transparent 65%),
     linear-gradient(180deg, #111113 0%, var(--color-bg) 45%);
   background-color: var(--color-bg);
   color: var(--color-text);
@@ -596,9 +608,9 @@ input[type='number'] {
   background: transparent;
 }
 
-/* main CTA: static soft glow (the breathing pulse was distracting) */
+/* main CTA: no halo — ambient glow lives in the background now */
 .glow-pulse {
-  box-shadow: 0 0 18px 1px color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: none;
 }
 
 /* ---------- page-entrance cascade ----------

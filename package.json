@@ -13,7 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "@excalidraw/excalidraw": "^0.18.1",
-    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@supabase/supabase-js": "^2.110.6",
     "@tauri-apps/api": "^2.11.1",

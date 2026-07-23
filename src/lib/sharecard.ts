@@ -74,9 +74,9 @@ function drawMascot(
   }
   if (sparkles) {
     ctx.fillStyle = ACCENT;
-    ctx.font = '28px "Inter Variable", sans-serif';
+    ctx.font = '28px "Geist Variable", sans-serif';
     ctx.fillText('✦', x - 26, y + 14);
-    ctx.font = '18px "Inter Variable", sans-serif';
+    ctx.font = '18px "Geist Variable", sans-serif';
     ctx.fillText('✦', x + 14 * px + 8, y - 6);
   }
 }
@@ -94,7 +94,7 @@ export async function generateWeekCard(d: WeekCardData): Promise<Blob> {
   ctx.scale(S, S);
 
   const mono = '"JetBrains Mono Variable", ui-monospace, monospace';
-  const sans = '"Inter Variable", system-ui, sans-serif';
+  const sans = '"Geist Variable", system-ui, sans-serif';
 
   // ---- background ----
   ctx.fillStyle = BG;
