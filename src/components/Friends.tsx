@@ -890,6 +890,7 @@ export function FriendsPage({
   // fresh account (which never publishes a pubkey) chats like anyone else
   function openChat(f: FriendEntry) {
     setViewing(null);
+    setGroupOpen(null); // a DM and a group can't both look selected
     setChatting(f.userId);
     onChatOpened(f.userId);
   }
