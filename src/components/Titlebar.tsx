@@ -117,8 +117,10 @@ export function Titlebar({
   const indReady = useRef(false);
 
   // the accent pill is a single element that GLIDES to the active tab.
-  // every tab keeps a constant width (icon+label always visible), so the bar
-  // never reflows — the pill is the only thing that moves.
+  // the BAR has a fixed width (content is centered inside it), so expanding
+  // the active tab's label only shifts siblings inside — the bar's edges
+  // never move. The pill chases the active button's real geometry for a few
+  // frames while the label expands; the CSS transition smooths the pursuit.
   useLayoutEffect(() => {
     const ind = indRef.current;
     const btn = navRef.current?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
@@ -143,7 +145,14 @@ export function Titlebar({
       indReady.current = true;
       return;
     }
-    place();
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (now: number) => {
+      place();
+      if (now - t0 < 500) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
   }, [tab]);
 
   // font load / locale change can shift label widths after first paint
@@ -218,7 +227,7 @@ export function Titlebar({
       <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center justify-center">
         <nav
           ref={navRef}
-          className="nav-pill scrollbar-none relative flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-surface p-1.5"
+          className="nav-pill relative flex w-[420px] max-w-full shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-border bg-surface p-1.5"
         >
           {/* sliding accent indicator (behind the buttons) */}
           <span
@@ -241,12 +250,19 @@ export function Titlebar({
                 type="button"
                 data-tab={tabDef.id}
                 onClick={() => onTab(tabDef.id)}
-                className={`nav-tab relative z-10 flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 text-[13px] font-bold transition-colors duration-200 ${
-                  active ? 'text-bg' : 'text-text-dim hover:text-text'
+                title={t(tabDef.labelKey)}
+                className={`nav-tab relative z-10 flex h-11 shrink-0 items-center justify-center rounded-full text-[13px] font-bold transition-colors duration-200 ${
+                  active ? 'px-4 text-bg' : 'w-11 text-text-dim hover:text-text'
                 }`}
               >
                 {NAV_ICONS[tabDef.id]}
-                {t(tabDef.labelKey)}
+                <span
+                  className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
+                    active ? 'ml-2 max-w-[8rem] opacity-100' : 'ml-0 max-w-0 opacity-0'
+                  }`}
+                >
+                  {t(tabDef.labelKey)}
+                </span>
                 {pending > 0 && (
                   <span
                     className={`absolute -right-0.5 -top-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-extrabold ${
