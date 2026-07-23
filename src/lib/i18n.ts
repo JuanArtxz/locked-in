@@ -1146,8 +1146,8 @@ const dict: Record<string, { pt: string; en: string }> = {
   },
   'ob.social.title': { pt: 'Foco é melhor com amigos', en: 'Focus is better with friends' },
   'ob.social.sub': {
-    pt: 'Jam em dupla, ranking da semana, chat criptografado. Adiciona alguém pelo @nome:',
-    en: 'Duo jams, weekly ranking, encrypted chat. Add someone by @name:',
+    pt: 'JAM em dupla, ranking da semana e chat. Adiciona alguém pelo @nome.',
+    en: 'Duo JAMs, weekly ranking and chat. Add someone by @name.',
   },
   'ob.social.create': { pt: 'Criar conta grátis', en: 'Create free account' },
   'set.retour': { pt: 'Rever o tour inicial', en: 'Replay the intro tour' },
@@ -1156,6 +1156,9 @@ const dict: Record<string, { pt: string; en: string }> = {
     en: 'Opens the welcome walkthrough again.',
   },
   'set.retour.btn': { pt: 'Rever', en: 'Replay' },
+  'ob.load.1': { pt: 'Preparando tudo pra você…', en: 'Getting everything ready…' },
+  'ob.load.2': { pt: 'Salvando suas preferências…', en: 'Saving your preferences…' },
+  'ob.load.3': { pt: 'Quase lá…', en: 'Almost there…' },
   'ob.tour.title': { pt: 'O mapa do app', en: 'The lay of the land' },
   'ob.tour.sub': {
     pt: 'Sete abas, cada uma com um trabalho.',
