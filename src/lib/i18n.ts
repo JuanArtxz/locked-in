@@ -278,6 +278,7 @@ const dict: Record<string, { pt: string; en: string }> = {
   'grp.owner': { pt: 'Dono', en: 'Owner' },
   'grp.admin': { pt: 'Admin', en: 'Admin' },
   'grp.member': { pt: 'Membro', en: 'Member' },
+  'grp.memberlist': { pt: 'Membros', en: 'Members' },
   'grp.promote': { pt: 'Tornar admin', en: 'Make admin' },
   'grp.demote': { pt: 'Tirar admin', en: 'Remove admin' },
   'grp.kick': { pt: 'Remover', en: 'Remove' },
