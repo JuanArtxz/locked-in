@@ -1150,6 +1150,18 @@ const dict: Record<string, { pt: string; en: string }> = {
     en: 'Duo jams, weekly ranking, encrypted chat. Add someone by @name:',
   },
   'ob.social.create': { pt: 'Criar conta grátis', en: 'Create free account' },
+  'ob.tour.title': { pt: 'O mapa do app', en: 'The lay of the land' },
+  'ob.tour.sub': {
+    pt: 'Sete abas, cada uma com um trabalho.',
+    en: 'Seven tabs, each with one job.',
+  },
+  'ob.tour.home': { pt: 'Timer de sessão com pausa e avaliação.', en: 'Session timer with pause and rating.' },
+  'ob.tour.routine': { pt: 'Check-in horário e hábitos da semana.', en: 'Hourly check-in and weekly habits.' },
+  'ob.tour.tasks': { pt: 'To-do list com prazos e progresso.', en: 'To-do list with deadlines and progress.' },
+  'ob.tour.analytics': { pt: 'Timeline, apps usados e heatmap anual.', en: 'Timeline, app usage and yearly heatmap.' },
+  'ob.tour.goals': { pt: 'Meta de horas por projeto.', en: 'Hour targets per project.' },
+  'ob.tour.friends': { pt: 'Chat, grupos e sessões JAM juntos.', en: 'Chat, groups and JAM sessions together.' },
+  'ob.tour.ranking': { pt: 'Quem focou mais na semana.', en: 'Who focused most this week.' },
   'ob.done.title': { pt: 'Tudo pronto!', en: 'All set!' },
   'ob.done.sub': {
     pt: 'Meta de {0}h por dia configurada. Aperta o botão e começa tua primeira sessão.',

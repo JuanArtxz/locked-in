@@ -11,8 +11,9 @@ export interface TabDef {
   labelKey: string;
 }
 
-/* one outline icon per tab — inactive tabs collapse to icon-only bubbles */
-const NAV_ICONS: Record<string, ReactNode> = {
+/* one outline icon per tab — inactive tabs collapse to icon-only bubbles.
+   Exported: the onboarding tour reuses them. */
+export const NAV_ICONS: Record<string, ReactNode> = {
   home: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="12" r="9" />

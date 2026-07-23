@@ -4,6 +4,8 @@ import { Mascot } from './Mascot';
 import { t } from '../lib/i18n';
 import * as social from '../lib/social';
 import { ACCENT_PRESETS } from './Settings';
+import { NAV_ICONS } from './Titlebar';
+import logoUrl from '../assets/logo.png';
 
 interface OnboardingProps {
   settings: Settings;
@@ -40,7 +42,26 @@ const APP_SUGGESTIONS = [
 
 const GOAL_OPTIONS = [1, 2, 3, 4, 6, 8];
 
-const STEPS = ['welcome', 'goal', 'autotrack', 'accent', 'extras', 'social', 'done'] as const;
+const TOUR_TABS = [
+  'home',
+  'routine',
+  'tasks',
+  'analytics',
+  'goals',
+  'friends',
+  'ranking',
+] as const;
+const TOUR_LABEL_KEY: Record<(typeof TOUR_TABS)[number], string> = {
+  home: 'tab.home',
+  routine: 'tab.routine',
+  tasks: 'tab.tasks',
+  analytics: 'tab.analytics',
+  goals: 'tab.goals',
+  friends: 'tab.friends',
+  ranking: 'tab.ranking',
+};
+
+const STEPS = ['welcome', 'goal', 'autotrack', 'accent', 'extras', 'tour', 'social', 'done'] as const;
 type Step = (typeof STEPS)[number];
 
 export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone }: OnboardingProps) {
@@ -108,31 +129,29 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
   }
 
   const chip = (active: boolean) =>
-    `rounded-2xl border-2 px-5 py-3 text-[15px] font-extrabold transition-all ${
-      active
-        ? 'border-accent bg-accent-dim text-accent scale-105'
-        : 'border-border bg-surface text-text-dim hover:border-border-strong hover:text-text'
+    `no-press rounded-full px-4 py-2.5 text-sm font-bold transition-colors ${
+      active ? 'bg-accent text-bg' : 'bg-surface text-text-dim hover:text-text'
     }`;
 
   const toggleRow = (label: string, hint: string, value: boolean, set: (v: boolean) => void) => (
     <button
       type="button"
       onClick={() => set(!value)}
-      className={`flex w-full items-center justify-between gap-4 rounded-2xl border-2 px-5 py-4 text-left transition-colors ${
-        value ? 'border-accent/50 bg-accent-dim/40' : 'border-border bg-surface hover:border-border-strong'
-      }`}
+      className="no-press flex w-full items-center justify-between gap-4 rounded-2xl border bg-surface px-5 py-4 text-left"
     >
       <div className="min-w-0">
         <div className="text-[15px] font-extrabold text-text">{label}</div>
-        <div className="mt-0.5 text-[12px] text-text-dim">{hint}</div>
+        <div className="mt-0.5 text-[12px] font-medium text-text-dim">{hint}</div>
       </div>
       <span
+        role="switch"
+        aria-checked={value}
         className={`h-[26px] w-12 shrink-0 rounded-full p-[3px] transition-colors ${
           value ? 'bg-accent' : 'bg-border-strong'
         }`}
       >
         <span
-          className={`block h-[20px] w-[20px] rounded-full bg-bg shadow-sm transition-transform ${
+          className={`block h-[20px] w-[20px] rounded-full bg-bg transition-transform duration-200 ${
             value ? 'translate-x-[22px]' : ''
           }`}
         />
@@ -142,24 +161,24 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden bg-bg">
-      {/* subtle dotted backdrop, same language as the login screen */}
+      {/* one huge quiet glow, same language as the Focus screen */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.04]"
+        className="pointer-events-none absolute inset-0"
         style={{
-          backgroundImage: 'radial-gradient(var(--color-accent) 1.5px, transparent 1.5px)',
-          backgroundSize: '30px 30px',
+          background:
+            'radial-gradient(circle 63vh at 50% 42%, color-mix(in srgb, var(--color-accent) 6.5%, transparent), transparent 72%)',
         }}
         aria-hidden
       />
       <div className="relative flex h-full w-full max-w-2xl flex-col px-10 py-8">
         {/* progress + skip */}
         <div className="flex items-center justify-between">
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {STEPS.map((s, i) => (
               <span
                 key={s}
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  i === stepIdx ? 'w-8 bg-accent' : i < stepIdx ? 'w-4 bg-accent/50' : 'w-4 bg-border-strong'
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  i === stepIdx ? 'w-8 bg-accent' : i < stepIdx ? 'w-4 bg-accent/40' : 'w-4 bg-border-strong'
                 }`}
               />
             ))}
@@ -168,43 +187,56 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
             <button
               type="button"
               onClick={finish}
-              className="text-[13px] font-bold text-text-faint hover:text-text"
+              className="text-[13px] font-bold text-text-faint transition-colors hover:text-text"
             >
               {t('ob.skip')}
             </button>
           )}
         </div>
 
-        {/* step body */}
+        {/* step body — materialize cascade on every step change */}
         <div
           key={step}
-          className="animate-fade-up flex min-h-0 flex-1 flex-col items-center justify-center gap-7 text-center"
+          className="cascade flex min-h-0 flex-1 flex-col items-center justify-center gap-6 text-center"
         >
           {step === 'welcome' && (
             <>
-              <div className="animate-mascot-wobble">
-                <Mascot mood="happy" size={160} />
-              </div>
-              <div>
-                <h1 className="text-4xl font-extrabold tracking-tight text-text">Locked In</h1>
-                <p className="mx-auto mt-3 max-w-md text-base text-text-dim">{t('ob.welcome.sub')}</p>
+              <img
+                src={logoUrl}
+                alt="Locked In"
+                draggable={false}
+                className="pointer-events-none h-14 w-auto select-none"
+              />
+              <p className="mx-auto max-w-md text-base font-medium leading-relaxed text-text-dim">
+                {t('ob.welcome.sub')}
+              </p>
+              <div className="flex flex-wrap justify-center gap-1.5">
+                {(['tab.home', 'tab.tasks', 'tab.friends', 'tab.ranking'] as const).map((k) => (
+                  <span
+                    key={k}
+                    className="rounded-full bg-surface px-3.5 py-1.5 text-xs font-bold text-text-dim"
+                  >
+                    {t(k)}
+                  </span>
+                ))}
               </div>
             </>
           )}
 
           {step === 'goal' && (
             <>
-              <Mascot mood="think" size={110} />
               <div>
                 <h2 className="text-2xl font-extrabold text-text">{t('ob.goal.title')}</h2>
-                <p className="mt-2 text-[13px] text-text-dim">{t('ob.goal.sub')}</p>
+                <p className="mt-2 text-[13px] font-medium text-text-dim">{t('ob.goal.sub')}</p>
               </div>
               <div className="flex flex-wrap justify-center gap-2">
                 {GOAL_OPTIONS.map((h) => (
                   <button
                     key={h}
                     type="button"
-                    className={chip(goal === h)}
+                    className={`no-press rounded-2xl px-6 py-3.5 text-base font-extrabold tabular-nums transition-colors ${
+                      goal === h ? 'bg-accent text-bg' : 'border bg-surface text-text-dim hover:text-text'
+                    }`}
                     onClick={() => {
                       setGoal(h);
                       update('daily_goal_hours', h);
@@ -219,25 +251,21 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
 
           {step === 'autotrack' && (
             <>
-              <Mascot mood="hyped" size={104} />
               <div>
                 <h2 className="text-2xl font-extrabold text-text">{t('ob.auto.title')}</h2>
-                <p className="mx-auto mt-2 max-w-md text-[13px] text-text-dim">
+                <p className="mx-auto mt-2 max-w-md text-[13px] font-medium text-text-dim">
                   {t('ob.auto.sub')}
                 </p>
               </div>
-              {toggleRow(
-                t('ob.auto.toggle'),
-                t('ob.auto.toggle.hint'),
-                autotrackOn,
-                (v) => {
+              <div className="w-full max-w-sm">
+                {toggleRow(t('ob.auto.toggle'), t('ob.auto.toggle.hint'), autotrackOn, (v) => {
                   setAutotrackOn(v);
                   commitApps(v, apps, customApps);
-                },
-              )}
+                })}
+              </div>
               {autotrackOn && (
                 <>
-                  <div className="scrollbar-none flex max-h-44 flex-wrap justify-center gap-1.5 overflow-y-auto">
+                  <div className="scrollbar-none flex max-h-40 flex-wrap justify-center gap-1.5 overflow-y-auto">
                     {APP_SUGGESTIONS.map((a) => (
                       <button
                         key={a}
@@ -270,7 +298,7 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
                     ))}
                   </div>
                   <form
-                    className="flex w-full max-w-xs gap-1.5"
+                    className="flex w-full max-w-xs items-center gap-1 rounded-full bg-surface py-1.5 pl-4 pr-1.5"
                     onSubmit={(e) => {
                       e.preventDefault();
                       const name = customApp.trim().toLowerCase();
@@ -285,11 +313,11 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
                       value={customApp}
                       onChange={(e) => setCustomApp(e.target.value)}
                       placeholder={t('ob.auto.custom')}
-                      className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-text outline-none placeholder:text-text-faint focus:border-accent"
+                      className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-text outline-none placeholder:text-text-faint"
                     />
                     <button
                       type="submit"
-                      className="rounded-xl border border-border bg-surface px-3 text-sm font-extrabold text-text hover:border-accent"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-base font-extrabold text-bg"
                     >
                       +
                     </button>
@@ -301,12 +329,11 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
 
           {step === 'accent' && (
             <>
-              <Mascot mood="relax" size={104} />
               <div>
                 <h2 className="text-2xl font-extrabold text-text">{t('ob.accent.title')}</h2>
-                <p className="mt-2 text-[13px] text-text-dim">{t('ob.accent.sub')}</p>
+                <p className="mt-2 text-[13px] font-medium text-text-dim">{t('ob.accent.sub')}</p>
               </div>
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-5 gap-4">
                 {ACCENT_PRESETS.map((p) => (
                   <button
                     key={p.color}
@@ -316,11 +343,21 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
                       setAccent(p.color);
                       update('accent_color', p.color);
                     }}
-                    className={`h-12 w-12 rounded-2xl border-4 transition-transform ${
-                      accent === p.color ? 'border-text' : 'border-transparent'
-                    }`}
-                    style={{ backgroundColor: p.color }}
-                  />
+                    className="no-press flex h-11 w-11 items-center justify-center rounded-full transition-shadow"
+                    style={{
+                      backgroundColor: p.color,
+                      boxShadow:
+                        accent === p.color
+                          ? `0 0 0 3px var(--color-bg), 0 0 0 5px ${p.color}`
+                          : 'none',
+                    }}
+                  >
+                    {accent === p.color && (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#101113" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="m5 12.5 4.5 4.5L19 7.5" />
+                      </svg>
+                    )}
+                  </button>
                 ))}
               </div>
             </>
@@ -328,12 +365,11 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
 
           {step === 'extras' && (
             <>
-              <Mascot mood="think" size={104} />
               <div>
                 <h2 className="text-2xl font-extrabold text-text">{t('ob.extras.title')}</h2>
-                <p className="mt-2 text-[13px] text-text-dim">{t('ob.extras.sub')}</p>
+                <p className="mt-2 text-[13px] font-medium text-text-dim">{t('ob.extras.sub')}</p>
               </div>
-              <div className="w-full max-w-sm space-y-2">
+              <div className="scrollbar-none w-full max-w-sm space-y-2 overflow-y-auto">
                 {toggleRow(t('set.sound'), t('ob.extras.sound'), sound, (v) => {
                   setSound(v);
                   update('sound_enabled', v);
@@ -358,19 +394,49 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
             </>
           )}
 
+          {step === 'tour' && (
+            <>
+              <div>
+                <h2 className="text-2xl font-extrabold text-text">{t('ob.tour.title')}</h2>
+                <p className="mt-2 text-[13px] font-medium text-text-dim">{t('ob.tour.sub')}</p>
+              </div>
+              <div className="grid w-full max-w-lg grid-cols-2 gap-2">
+                {TOUR_TABS.map((id) => (
+                  <div
+                    key={id}
+                    className={`flex items-center gap-3 rounded-2xl border bg-surface px-4 py-3 text-left ${
+                      id === 'ranking' ? 'col-span-2 justify-self-center px-6' : ''
+                    }`}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                      {NAV_ICONS[id]}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-extrabold text-text">
+                        {t(TOUR_LABEL_KEY[id])}
+                      </div>
+                      <div className="text-[11.5px] font-medium leading-snug text-text-dim">
+                        {t(`ob.tour.${id}`)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           {step === 'social' && (
             <>
-              <Mascot mood="hyped" size={104} />
               <div>
                 <h2 className="text-2xl font-extrabold text-text">{t('ob.social.title')}</h2>
-                <p className="mx-auto mt-2 max-w-md text-[13px] text-text-dim">
+                <p className="mx-auto mt-2 max-w-md text-[13px] font-medium text-text-dim">
                   {t('ob.social.sub')}
                 </p>
               </div>
               {signedIn ? (
                 <div className="w-full max-w-xs">
                   <form
-                    className="flex gap-1.5"
+                    className="flex items-center gap-1 rounded-full bg-surface py-1.5 pl-4 pr-1.5"
                     onSubmit={(e) => {
                       e.preventDefault();
                       addFriend();
@@ -380,12 +446,12 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
                       value={friendName}
                       onChange={(e) => setFriendName(e.target.value)}
                       placeholder={t('fr.add.placeholder')}
-                      className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2.5 text-[13px] text-text outline-none placeholder:text-text-faint focus:border-accent"
+                      className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-text outline-none placeholder:text-text-faint"
                     />
                     <button
                       type="submit"
                       disabled={friendBusy}
-                      className="rounded-xl bg-accent px-4 text-sm font-extrabold text-bg disabled:opacity-50"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-base font-extrabold text-bg disabled:opacity-50"
                     >
                       +
                     </button>
@@ -404,7 +470,7 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
                 <button
                   type="button"
                   onClick={onCreateAccount}
-                  className="rounded-2xl bg-accent px-8 py-4 text-base font-extrabold text-bg transition-transform"
+                  className="rounded-2xl bg-accent px-8 py-4 text-base font-extrabold text-bg"
                 >
                   {t('ob.social.create')}
                 </button>
@@ -414,12 +480,10 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
 
           {step === 'done' && (
             <>
-              <div className="animate-mascot-wobble">
-                <Mascot mood="hyped" size={160} />
-              </div>
+              <Mascot mood="hyped" size={120} />
               <div>
                 <h2 className="text-3xl font-extrabold text-text">{t('ob.done.title')}</h2>
-                <p className="mx-auto mt-3 max-w-md text-base text-text-dim">
+                <p className="mx-auto mt-3 max-w-md text-base font-medium leading-relaxed text-text-dim">
                   {t('ob.done.sub', String(goal))}
                 </p>
               </div>
@@ -432,7 +496,7 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
           <button
             type="button"
             onClick={back}
-            className={`rounded-xl px-5 py-3 text-sm font-bold text-text-dim hover:text-text ${
+            className={`rounded-xl px-5 py-3 text-sm font-bold text-text-dim transition-colors hover:text-text ${
               stepIdx === 0 ? 'invisible' : ''
             }`}
           >
@@ -441,7 +505,7 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
           <button
             type="button"
             onClick={step === 'done' ? finish : next}
-            className="rounded-2xl bg-accent px-10 py-3.5 text-base font-extrabold text-bg transition-transform"
+            className="rounded-2xl bg-accent px-10 py-3.5 text-base font-extrabold text-bg"
           >
             {step === 'done' ? t('ob.finish') : step === 'welcome' ? t('ob.start') : t('ob.next')}
           </button>
