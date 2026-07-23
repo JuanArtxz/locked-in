@@ -805,6 +805,7 @@ function AppShell() {
         startEpoch: null,
         partyCount: null,
         partyMax: null,
+        joinSecret: null,
         clear: true,
       }).catch(() => {});
       return;
@@ -815,6 +816,7 @@ function AppShell() {
     let startEpoch: number | null = null;
     let partyCount: number | null = null;
     let partyMax: number | null = null;
+    let joinSecret: string | null = null;
     if (sess && (focus.phase === 'focusing' || focus.phase === 'paused')) {
       details = sess.project || sess.task || '';
       if (focus.phase === 'paused') state = t('dp.paused');
@@ -824,6 +826,16 @@ function AppShell() {
       }
       if (focus.phase === 'focusing') {
         startEpoch = Math.floor(new Date(sess.started_at).getTime() / 1000);
+        // solo session -> Discord "Join" button: the clicker's app sends the
+        // normal jam REQUEST, so the host still approves in-app. 1:1 jams are
+        // closed at two people, so a running jam never advertises a secret.
+        const meProfile = social.state?.me;
+        if (!focus.jam && signedIn && meProfile) {
+          const safeTask = (sess.task || '').replace(/\|/g, '/').slice(0, 40);
+          joinSecret = `1|${meProfile.user_id}|${meProfile.username}|${startEpoch}|${safeTask}`;
+          partyCount = 1;
+          partyMax = 2;
+        }
       }
     } else if (focus.phase === 'break') {
       state = t('dp.break');
@@ -838,6 +850,7 @@ function AppShell() {
       startEpoch,
       partyCount,
       partyMax,
+      joinSecret,
       clear: false,
     }).catch(() => {});
   }, [
@@ -845,6 +858,8 @@ function AppShell() {
     focus.activeSession,
     focus.jam,
     todaySec,
+    signedIn,
+    social.state?.me,
     settingsHook.settings?.discord_presence_enabled,
     settingsHook.settings?.language,
   ]);
@@ -1253,6 +1268,32 @@ function AppShell() {
     },
     [jam, onError, pushToast, social.presence],
   );
+
+  // Discord "Join" clicked on someone's status: the secret carries the host's
+  // id/username/session — fire the ordinary jam REQUEST at them. Ref pattern so
+  // the once-registered listener always sees fresh state.
+  const discordJoinRef = useRef<(secret: string) => void>(() => {});
+  discordJoinRef.current = (secret) => {
+    const parts = secret.split('|');
+    if (parts.length < 5 || parts[0] !== '1') return;
+    const [, uid, uname, epoch, ...taskParts] = parts;
+    if (!signedIn) return;
+    if (social.state?.me?.user_id === uid) return;
+    const task = taskParts.join('|') || t('jam.generic');
+    const startedAt = new Date(Number(epoch) * 1000).toISOString();
+    jam.send(uid, uname, 'request', task, startedAt).then((err) => {
+      if (err === 'pending') pushToast(t('jam.pending', uname), 'info');
+      else if (err) onError(err);
+      else pushToast(t('jam.sent.toast', uname), 'info');
+    });
+  };
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<string>('discord:join', (e) => discordJoinRef.current(e.payload)).then((u) => {
+      unlisten = u;
+    });
+    return () => unlisten?.();
+  }, []);
 
   // answers coming from the corner popup's Accept/Decline buttons
   const answerJamPromptRef = useRef<(accept: boolean) => void>(() => {});

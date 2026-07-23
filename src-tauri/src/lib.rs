@@ -835,6 +835,7 @@ struct PresenceData {
   start_epoch: Option<i64>,
   party_count: Option<i32>,
   party_max: Option<i32>,
+  join_secret: Option<String>,
   clear: bool,
 }
 
@@ -893,6 +894,11 @@ fn start_presence_thread() {
           if let (Some(n), Some(max)) = (p.party_count, p.party_max) {
             act = act.party(activity::Party::new().id("jam").size([n, max]));
           }
+          // join secret -> discord renders the "Join" button on the profile card;
+          // clicking it fires ACTIVITY_JOIN on the clicker's own app (thread below)
+          if let Some(sec) = p.join_secret.as_deref() {
+            act = act.secrets(activity::Secrets::new().join(sec));
+          }
           c.set_activity(act).is_ok()
         };
         if ok {
@@ -913,10 +919,79 @@ fn discord_presence(
   start_epoch: Option<i64>,
   party_count: Option<i32>,
   party_max: Option<i32>,
+  join_secret: Option<String>,
   clear: bool,
 ) {
   if let Some(tx) = PRESENCE_TX.get() {
-    let _ = tx.send(PresenceData { details, state, start_epoch, party_count, party_max, clear });
+    let _ = tx.send(PresenceData {
+      details,
+      state,
+      start_epoch,
+      party_count,
+      party_max,
+      join_secret,
+      clear,
+    });
+  }
+}
+
+/// Second IPC connection dedicated to RECEIVING events: subscribes to
+/// ACTIVITY_JOIN and forwards the secret to the webview when the user clicks
+/// "Join" on someone's Discord status. Reconnects forever in the background.
+fn start_presence_events(app: tauri::AppHandle) {
+  std::thread::spawn(move || {
+    use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
+    let mut nonce: u64 = 0;
+    loop {
+      std::thread::sleep(std::time::Duration::from_secs(10));
+      let Ok(mut c) = DiscordIpcClient::new(DISCORD_APP_ID) else { continue };
+      if c.connect().is_err() {
+        continue;
+      }
+      nonce += 1;
+      let sub = serde_json::json!({
+        "cmd": "SUBSCRIBE",
+        "evt": "ACTIVITY_JOIN",
+        "args": {},
+        "nonce": format!("lockedin-{nonce}"),
+      });
+      if c.send(sub, 1).is_err() {
+        continue;
+      }
+      loop {
+        match c.recv() {
+          Ok((_, v)) => {
+            if v.get("evt").and_then(|e| e.as_str()) == Some("ACTIVITY_JOIN") {
+              if let Some(sec) = v.pointer("/data/secret").and_then(|s| s.as_str()) {
+                let _ = app.emit("discord:join", sec.to_string());
+                show_main(&app);
+              }
+            }
+          }
+          // pipe died (discord closed) — back to the reconnect loop
+          Err(_) => break,
+        }
+      }
+    }
+  });
+}
+
+/// Registers the discord-<appid> protocol so Discord can LAUNCH the app when
+/// someone clicks "Join" without Locked In running (GameSDK-style registry).
+fn register_discord_launch() {
+  use winreg::enums::HKEY_CURRENT_USER;
+  use winreg::RegKey;
+  let Ok(exe) = std::env::current_exe() else { return };
+  let root = RegKey::predef(HKEY_CURRENT_USER);
+  let base = format!("Software\\Classes\\discord-{DISCORD_APP_ID}");
+  let Ok((key, _)) = root.create_subkey(&base) else { return };
+  let _ = key.set_value("", &format!("URL:Run game {DISCORD_APP_ID} protocol"));
+  let _ = key.set_value("URL Protocol", &"");
+  if let Ok((icon, _)) = root.create_subkey(format!("{base}\\DefaultIcon")) {
+    let _ = icon.set_value("", &format!("\"{}\"", exe.display()));
+  }
+  if let Ok((cmd, _)) = root.create_subkey(format!("{base}\\shell\\open\\command")) {
+    let _ = cmd.set_value("", &format!("\"{}\"", exe.display()));
   }
 }
 
@@ -1405,6 +1480,8 @@ pub fn run() {
 
       // discord rich presence pipe (lazy — connects when discord is running)
       start_presence_thread();
+      start_presence_events(app.handle().clone());
+      register_discord_launch();
 
       // anti-instagram: restore today's usage, then start the native watcher
       let mut initial = InstaState::default();
