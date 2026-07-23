@@ -51,7 +51,7 @@ export function Blocker() {
       <Mascot mood="sad" size={150} />
 
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-text">o doomscroll de hoje acabou</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-text">O doomscroll de hoje acabou</h1>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-text-dim">
           Você usou{' '}
           <span className="font-mono text-text">{formatDurationShort(s.usedSec)}</span> dos{' '}
