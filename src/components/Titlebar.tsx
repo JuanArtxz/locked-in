@@ -10,6 +10,47 @@ export interface TabDef {
   labelKey: string;
 }
 
+/* one outline icon per tab — inactive tabs collapse to icon-only bubbles */
+const NAV_ICONS: Record<string, ReactNode> = {
+  home: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  ),
+  routine: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </svg>
+  ),
+  analytics: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 20v-8M12 20V5M19 20v-11" />
+    </svg>
+  ),
+  goals: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="4.2" />
+      <circle cx="12" cy="12" r="0.6" fill="currentColor" />
+    </svg>
+  ),
+  friends: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="9" cy="8" r="3.4" />
+      <path d="M2.8 20c0-3.5 2.8-5.8 6.2-5.8s6.2 2.3 6.2 5.8" />
+      <circle cx="17.3" cy="9" r="2.7" />
+      <path d="M16.8 14.5c2.6.4 4.4 2.3 4.4 5.1" />
+    </svg>
+  ),
+  ranking: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M8 21h8M12 17v4M17 5h3a1 1 0 0 1 1 1c0 3-2 5-4.5 5.4M7 5H4a1 1 0 0 0-1 1c0 3 2 5 4.5 5.4" />
+      <path d="M17 4v5a5 5 0 0 1-10 0V4z" />
+    </svg>
+  ),
+};
+
 interface TitlebarProps {
   tabs: TabDef[];
   tab: string;
@@ -101,7 +142,7 @@ export function Titlebar({
   return (
     <header
       data-tauri-drag-region
-      className="relative flex h-14 shrink-0 select-none items-stretch gap-2 border-b border-border pl-2"
+      className="relative flex h-14 shrink-0 select-none items-stretch gap-2 pl-2"
     >
       {/* left: settings gear only */}
       <div data-tauri-drag-region className="flex items-center">
@@ -122,27 +163,35 @@ export function Titlebar({
         </button>
       </div>
 
-      {/* center: bare text nav, active shown by a bar ON TOP */}
-      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-stretch justify-center">
-        <nav className="scrollbar-none flex min-w-0 items-stretch gap-1 overflow-x-auto px-2 sm:gap-2">
+      {/* center: floating pill nav — active tab expands to icon+label in accent */}
+      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center justify-center">
+        <nav className="scrollbar-none flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-border bg-surface p-1 shadow-[0_1px_2px_rgba(0,0,0,0.35),0_8px_22px_-6px_rgba(0,0,0,0.45)]">
           {tabs.map((tabDef) => {
             const active = tab === tabDef.id;
+            const pending = tabDef.id === 'friends' ? (social.state?.incoming.length ?? 0) : 0;
             return (
               <button
                 key={tabDef.id}
                 type="button"
                 onClick={() => onTab(tabDef.id)}
-                className={`relative flex shrink-0 items-center px-2.5 text-sm font-bold tracking-tight transition-colors sm:px-3 ${
-                  active ? 'text-text' : 'text-text-dim hover:text-text'
+                title={t(tabDef.labelKey)}
+                className={`relative flex h-9 shrink-0 items-center justify-center rounded-full transition-all duration-150 ${
+                  active
+                    ? 'gap-2 bg-accent px-4 text-[13px] font-bold text-bg'
+                    : 'w-9 text-text-dim hover:bg-surface-hover hover:text-text'
                 }`}
               >
-                {active && (
-                  <span className="absolute inset-x-1.5 top-0 h-[3px] rounded-b-full bg-accent" />
-                )}
-                {t(tabDef.labelKey)}
-                {tabDef.id === 'friends' && (social.state?.incoming.length ?? 0) > 0 && (
-                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-extrabold text-bg">
-                    {social.state?.incoming.length}
+                {NAV_ICONS[tabDef.id]}
+                {active && t(tabDef.labelKey)}
+                {pending > 0 && (
+                  <span
+                    className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-extrabold ${
+                      active
+                        ? 'bg-bg text-accent'
+                        : 'absolute -right-0.5 -top-0.5 border-2 border-surface bg-accent text-bg'
+                    }`}
+                  >
+                    {pending}
                   </span>
                 )}
               </button>

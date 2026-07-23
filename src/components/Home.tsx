@@ -359,7 +359,7 @@ export function Home({
             className={`${styleDef.cls} ${timerSize} ${timerColor} leading-none tabular-nums`}
             style={
               !paused && styleDef.id === 'classic'
-                ? { textShadow: '0 0 60px rgba(212,255,63,0.12)' }
+                ? { textShadow: '0 0 40px rgba(212,255,63,0.28), 0 0 110px rgba(212,255,63,0.14)' }
                 : undefined
             }
           >

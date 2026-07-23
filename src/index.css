@@ -196,145 +196,159 @@
   color-scheme: dark;
 }
 
-/* ---------- chunky / Duolingo-ish design language ----------
-   opt-in classes so nothing existing breaks; applied where the blocky look
-   is wanted. Thick borders, hard offset shadow, press-down on click. */
+/* ---------- soft design language ----------
+   same class names as the old chunky pass so no component changes: hairline
+   borders, big radii, layered diffuse shadows, lift on hover. */
 .chunk {
-  border: 2px solid var(--color-border-strong);
-  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
   background: var(--color-surface);
-  box-shadow: 0 4px 0 0 var(--color-border-strong);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 55%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 12px 30px -8px rgba(0, 0, 0, 0.4);
 }
 .chunk-btn {
-  border: 2px solid var(--color-border-strong);
-  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
   background: var(--color-surface);
-  box-shadow: 0 4px 0 0 var(--color-border-strong);
-  font-weight: 700;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 8px 20px -8px rgba(0, 0, 0, 0.35);
+  font-weight: 650;
   transition:
-    transform 60ms ease,
-    box-shadow 60ms ease,
-    background-color 120ms ease,
-    border-color 120ms ease;
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 .chunk-btn:hover:not(:disabled) {
   background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 12px 28px -8px rgba(0, 0, 0, 0.45);
 }
 .chunk-btn:active:not(:disabled) {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 0 var(--color-border-strong);
+  transform: translateY(0) scale(0.98);
 }
 .chunk-btn:disabled {
   opacity: 0.45;
 }
-/* primary accent variant — the big call-to-action buttons */
+/* primary accent variant — the big call-to-action buttons: lime glow */
 .chunk-btn-accent {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, #000);
+  border-color: transparent;
   background: var(--color-accent);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 60%);
   color: var(--color-bg);
-  box-shadow: 0 4px 0 0 color-mix(in srgb, var(--color-accent) 55%, #000);
+  box-shadow:
+    0 2px 10px color-mix(in srgb, var(--color-accent) 22%, transparent),
+    0 12px 30px -8px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 .chunk-btn-accent:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-accent) 90%, #fff);
+  background: color-mix(in srgb, var(--color-accent) 92%, #fff);
+  border-color: transparent;
+  box-shadow:
+    0 3px 14px color-mix(in srgb, var(--color-accent) 30%, transparent),
+    0 16px 36px -8px color-mix(in srgb, var(--color-accent) 38%, transparent);
 }
 .chunk-btn-accent:active:not(:disabled) {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, #000);
+  transform: translateY(0) scale(0.98);
 }
 .chunk-input {
-  border: 2px solid var(--color-border-strong);
+  border: 1px solid var(--color-border-strong);
   border-radius: 14px;
   background: var(--color-bg);
-  transition: border-color 120ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 .chunk-input:focus {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent);
   outline: none;
 }
 
-/* ---------- GLOBAL chunky pass — makes the whole app Duolingo-thick ---------- */
-/* thicker type everywhere */
+/* ---------- GLOBAL soft pass ---------- */
 body {
   font-weight: 500;
 }
 h1,
 h2,
 h3 {
-  font-weight: 800;
-}
-button {
   font-weight: 700;
 }
+button {
+  font-weight: 650;
+}
 
-/* every bordered surface card gets a chunky border + hard offset shadow */
+/* every bordered surface card: hairline + diffuse depth + top light */
 .bg-surface.border,
 .bg-surface.border-border,
 .bg-surface.border-border-strong {
-  border-width: 2px;
-  border-color: var(--color-border-strong);
-  box-shadow: 0 3px 0 0 rgba(0, 0, 0, 0.32);
+  border-width: 1px;
+  border-color: var(--color-border);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 55%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 10px 26px -10px rgba(0, 0, 0, 0.4);
 }
 
-/* accent (primary) buttons — hard shadow + press-down, applied globally.
+/* accent (primary) buttons — lime glow + lift, applied globally.
    toggles (role=switch) are excluded so their pill/knob stay intact. */
 button.bg-accent:not([role='switch']) {
-  border: 2px solid color-mix(in srgb, var(--color-accent) 55%, #000);
-  box-shadow: 0 4px 0 0 color-mix(in srgb, var(--color-accent) 55%, #000);
-  font-weight: 800;
+  border: 0;
+  box-shadow:
+    0 2px 10px color-mix(in srgb, var(--color-accent) 20%, transparent),
+    0 10px 26px -8px color-mix(in srgb, var(--color-accent) 28%, transparent);
+  font-weight: 700;
   transition:
-    transform 60ms ease,
-    box-shadow 60ms ease,
-    filter 120ms ease;
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    filter 140ms ease;
+}
+button.bg-accent:not([role='switch']):hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 3px 14px color-mix(in srgb, var(--color-accent) 28%, transparent),
+    0 14px 32px -8px color-mix(in srgb, var(--color-accent) 36%, transparent);
 }
 button.bg-accent:not([role='switch']):active:not(:disabled) {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, #000);
+  transform: translateY(0) scale(0.98);
 }
 
-/* bordered (secondary) buttons — thicker border + subtle hard shadow + press */
+/* bordered (secondary) buttons — hairline + soft depth + lift */
 button.border.border-border:not([role='switch']),
 button.border.border-border-strong:not([role='switch']) {
-  border-width: 2px;
+  border-width: 1px;
   border-color: var(--color-border-strong);
-  box-shadow: 0 3px 0 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   transition:
-    transform 60ms ease,
-    box-shadow 60ms ease,
-    background-color 120ms ease;
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+button.border.border-border:not([role='switch']):hover:not(:disabled),
+button.border.border-border-strong:not([role='switch']):hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.4);
 }
 button.border.border-border:not([role='switch']):active:not(:disabled),
 button.border.border-border-strong:not([role='switch']):active:not(:disabled) {
-  transform: translateY(3px);
-  box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.3);
+  transform: translateY(0) scale(0.98);
 }
 
-/* squarer corners: the big rounds become chunky-square. rounded-full is left
-   alone (dots, toggle knobs, avatars need it); pill containers get squared via
-   .scrollbar-none nav override below. */
-.rounded-3xl {
-  border-radius: 10px;
-}
+/* generous corners everywhere — amplify Tailwind's defaults a notch */
 .rounded-2xl {
-  border-radius: 8px;
+  border-radius: 18px;
 }
 .rounded-xl {
-  border-radius: 7px;
+  border-radius: 14px;
 }
 .rounded-lg {
-  border-radius: 6px;
-}
-.chunk,
-.chunk-btn,
-.chunk-btn-accent,
-.chunk-input {
-  border-radius: 8px;
-}
-/* nav tab bar + its buttons: pill → squared */
-nav.rounded-full {
-  border-radius: 10px;
-}
-nav.rounded-full button.rounded-full {
-  border-radius: 7px;
+  border-radius: 11px;
 }
 
 html,
@@ -346,7 +360,12 @@ body,
 
 body {
   background:
-    radial-gradient(ellipse 90% 55% at 50% -12%, rgba(255, 255, 255, 0.05), transparent 65%),
+    radial-gradient(
+      ellipse 55% 40% at 50% -8%,
+      color-mix(in srgb, var(--color-accent) 4.5%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(ellipse 90% 55% at 50% -12%, rgba(255, 255, 255, 0.04), transparent 65%),
     linear-gradient(180deg, #111113 0%, var(--color-bg) 45%);
   background-color: var(--color-bg);
   color: var(--color-text);
@@ -649,11 +668,6 @@ input[type='number'] {
   animation: msg-in 120ms ease-out;
 }
 
-/* subtle depth so surfaces don't read flat-solid */
-.chunk {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 58%);
-  box-shadow: 0 12px 28px -20px rgba(0, 0, 0, 0.85);
-}
 .bubble-shadow {
   box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.75);
 }
