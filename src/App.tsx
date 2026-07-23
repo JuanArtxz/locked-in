@@ -155,6 +155,9 @@ function AppShell() {
     },
   });
   const [tab, setTab] = useState<Tab>('home');
+  // task title sent from the Tasks tab into the Focus input
+  const [focusPrefill, setFocusPrefill] = useState<string | null>(null);
+  const clearFocusPrefill = useCallback(() => setFocusPrefill(null), []);
   const [routineSub, setRoutineSub] = useState<'checkin' | 'habits'>('checkin');
   const [refreshKey, setRefreshKey] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -2188,6 +2191,8 @@ function AppShell() {
             }}
             jamRoom={jamRoomMembers}
             onCheer={cheerMember}
+            prefillTask={focusPrefill}
+            onPrefillConsumed={clearFocusPrefill}
           />
         )}
         {tab === 'routine' && (
@@ -2216,7 +2221,15 @@ function AppShell() {
             dailyGoalHours={settingsHook.settings?.daily_goal_hours ?? 4}
           />
         )}
-        {tab === 'tasks' && <TasksPage onError={onError} />}
+        {tab === 'tasks' && (
+          <TasksPage
+            onError={onError}
+            onFocusTask={(title) => {
+              setFocusPrefill(title);
+              setTab('home');
+            }}
+          />
+        )}
         {tab === 'goals' && <GoalsPage onError={onError} refreshKey={refreshKey} />}
         {tab === 'profile' && (
           <ProfilePage

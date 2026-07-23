@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as db from '../lib/db';
 import type { TaskItem } from '../lib/db';
 import { dateLocale, t } from '../lib/i18n';
@@ -6,6 +7,8 @@ import { ConfirmModal } from './Confirm';
 
 interface TasksProps {
   onError: (m: string) => void;
+  /** sends the task title to the Focus tab's "working on" input */
+  onFocusTask: (title: string) => void;
 }
 
 function CheckIcon({ size = 12 }: { size?: number }) {
@@ -25,11 +28,16 @@ function ClockIcon({ size = 15 }: { size?: number }) {
   );
 }
 
-const TIME_PRESETS = [9 * 60, 12 * 60, 15 * 60, 18 * 60, 21 * 60];
-
-function fmtMin(min: number): string {
-  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+function PlayIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5.5v13a1 1 0 0 0 1.52.86l10.2-6.5a1 1 0 0 0 0-1.7L9.52 4.64A1 1 0 0 0 8 5.5z" />
+    </svg>
+  );
 }
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const MINUTES = [0, 15, 30, 45];
 
 /** "hoje 18:00" / "amanhã 09:00" / "23 jul 14:00" */
 function fmtDue(iso: string): string {
@@ -46,19 +54,19 @@ function fmtDue(iso: string): string {
   return `${date} ${time}`;
 }
 
-export function TasksPage({ onError }: TasksProps) {
+export function TasksPage({ onError, onFocusTask }: TasksProps) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState('');
   const [dueOpen, setDueOpen] = useState(false);
   const [dueDay, setDueDay] = useState<Date | null>(null);
-  const [dueMin, setDueMin] = useState(18 * 60);
+  const [dueHour, setDueHour] = useState(18);
+  const [dueMinute, setDueMinute] = useState(0);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<TaskItem | null>(null);
   // just-completed tasks linger in place briefly before moving to the done section
   const [holding, setHolding] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
-  const dueRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const reload = useCallback(() => {
@@ -78,14 +86,11 @@ export function TasksPage({ onError }: TasksProps) {
     return () => window.clearInterval(id);
   }, []);
 
-  // deadline popover closes on any click outside it
   useEffect(() => {
     if (!dueOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (!dueRef.current?.contains(e.target as Node)) setDueOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDueOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [dueOpen]);
 
   const doneCount = tasks.filter((task) => !!task.done_at).length;
@@ -103,7 +108,9 @@ export function TasksPage({ onError }: TasksProps) {
   const total = tasks.length;
   const pct = total === 0 ? 0 : Math.round((doneCount / total) * 100);
 
-  const dueValue = dueDay ? new Date(dueDay.getTime() + dueMin * 60_000) : null;
+  const dueValue = dueDay
+    ? new Date(dueDay.getTime() + (dueHour * 60 + dueMinute) * 60_000)
+    : null;
 
   const dayChips = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -125,7 +132,8 @@ export function TasksPage({ onError }: TasksProps) {
       await db.createTask(title, dueValue ? dueValue.toISOString() : null);
       setDraft('');
       setDueDay(null);
-      setDueMin(18 * 60);
+      setDueHour(18);
+      setDueMinute(0);
       setDueOpen(false);
       reload();
       inputRef.current?.focus();
@@ -201,6 +209,16 @@ export function TasksPage({ onError }: TasksProps) {
             {overdue ? `${t('tasks.due.overdue')} · ${fmtDue(task.due_at)}` : fmtDue(task.due_at)}
           </span>
         )}
+        {!isDone && (
+          <button
+            type="button"
+            onClick={() => onFocusTask(task.title)}
+            title={t('tasks.focus')}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-faint opacity-0 transition-all hover:bg-accent/10 hover:text-accent group-hover:opacity-100"
+          >
+            <PlayIcon />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setConfirmDelete(task)}
@@ -263,7 +281,7 @@ export function TasksPage({ onError }: TasksProps) {
             e.preventDefault();
             add();
           }}
-          className="relative flex items-center gap-1 rounded-2xl border bg-surface py-2 pl-4 pr-2"
+          className="flex items-center gap-1 rounded-2xl border bg-surface py-2 pl-4 pr-2"
         >
           <input
             ref={inputRef}
@@ -274,12 +292,12 @@ export function TasksPage({ onError }: TasksProps) {
           />
           <button
             type="button"
-            onClick={() => setDueOpen(!dueOpen)}
+            onClick={() => setDueOpen(true)}
             title={t('tasks.due.set')}
             className={`no-press flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full transition-colors ${
               dueValue
                 ? 'bg-accent/10 px-3 text-xs font-bold tabular-nums text-accent'
-                : `w-9 ${dueOpen ? 'bg-white/5 text-text' : 'text-text-dim hover:bg-white/5 hover:text-text'}`
+                : 'w-9 text-text-dim hover:bg-white/5 hover:text-text'
             }`}
           >
             <ClockIcon size={dueValue ? 13 : 15} />
@@ -301,97 +319,6 @@ export function TasksPage({ onError }: TasksProps) {
               </svg>
             </button>
           </div>
-
-          {/* deadline picker — day chips + time presets, zero native widgets */}
-          {dueOpen && (
-            <div
-              ref={dueRef}
-              className="chunk animate-scale-in absolute bottom-12 right-0 z-20 w-[21.5rem] p-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wide text-text-faint">
-                  {t('tasks.due')}
-                </span>
-                {dueDay && (
-                  <button
-                    type="button"
-                    onClick={() => setDueDay(null)}
-                    className="text-xs font-bold text-text-faint transition-colors hover:text-danger"
-                  >
-                    {t('tasks.done.clear')}
-                  </button>
-                )}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {dayChips.map(({ date, label }) => {
-                  const active = dueDay?.getTime() === date.getTime();
-                  return (
-                    <button
-                      key={date.getTime()}
-                      type="button"
-                      onClick={() => setDueDay(active ? null : date)}
-                      className={`no-press rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
-                        active
-                          ? 'bg-accent text-bg'
-                          : 'bg-bg/60 text-text-dim hover:text-text'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-3 flex items-center gap-1.5">
-                {TIME_PRESETS.map((min) => (
-                  <button
-                    key={min}
-                    type="button"
-                    onClick={() => {
-                      setDueMin(min);
-                      if (!dueDay) setDueDay(dayChips[0].date);
-                    }}
-                    className={`no-press rounded-full px-2.5 py-1.5 text-xs font-bold tabular-nums transition-colors ${
-                      dueMin === min && dueDay
-                        ? 'bg-accent text-bg'
-                        : 'bg-bg/60 text-text-dim hover:text-text'
-                    }`}
-                  >
-                    {fmtMin(min)}
-                  </button>
-                ))}
-                <span className="flex-1" />
-                <button
-                  type="button"
-                  onClick={() => setDueMin((m) => (m + 1410) % 1440)}
-                  className="no-press flex h-7 w-7 items-center justify-center rounded-full bg-bg/60 text-text-dim transition-colors hover:text-text"
-                  aria-label="-30min"
-                >
-                  ‹
-                </button>
-                <span className="w-12 text-center text-sm font-extrabold tabular-nums text-text">
-                  {fmtMin(dueMin)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setDueMin((m) => (m + 30) % 1440)}
-                  className="no-press flex h-7 w-7 items-center justify-center rounded-full bg-bg/60 text-text-dim transition-colors hover:text-text"
-                  aria-label="+30min"
-                >
-                  ›
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!dueDay) setDueDay(dayChips[0].date);
-                  setDueOpen(false);
-                }}
-                className="no-press mt-3.5 w-full rounded-xl bg-accent py-2.5 text-sm font-extrabold text-bg"
-              >
-                {t('tasks.due.ok')}
-              </button>
-            </div>
-          )}
         </form>
 
         {open.length > 0 && (
@@ -427,6 +354,119 @@ export function TasksPage({ onError }: TasksProps) {
           </p>
         )}
       </div>
+
+      {/* deadline picker — full popup: day chips, hour grid, minute chips */}
+      {dueOpen &&
+        createPortal(
+          <div
+            className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6"
+            onMouseDown={(e) => e.target === e.currentTarget && setDueOpen(false)}
+          >
+            <div className="chunk animate-scale-in w-full max-w-md p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-extrabold text-text">{t('tasks.due')}</h2>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-bold tabular-nums transition-colors ${
+                    dueValue ? 'bg-accent/10 text-accent' : 'bg-bg/60 text-text-faint'
+                  }`}
+                >
+                  {dueValue ? fmtDue(dueValue.toISOString()) : '—'}
+                </span>
+              </div>
+
+              <p className="mt-4 text-xs font-extrabold uppercase tracking-wide text-text-faint">
+                {t('tasks.due.day')}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {dayChips.map(({ date, label }) => {
+                  const active = dueDay?.getTime() === date.getTime();
+                  return (
+                    <button
+                      key={date.getTime()}
+                      type="button"
+                      onClick={() => setDueDay(active ? null : date)}
+                      className={`no-press rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                        active ? 'bg-accent text-bg' : 'bg-bg/60 text-text-dim hover:text-text'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="mt-4 text-xs font-extrabold uppercase tracking-wide text-text-faint">
+                {t('tasks.due.hour')}
+              </p>
+              <div className="mt-2 grid grid-cols-6 gap-1.5">
+                {HOURS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => {
+                      setDueHour(h);
+                      if (!dueDay) setDueDay(dayChips[0].date);
+                    }}
+                    className={`no-press rounded-lg py-1.5 text-xs font-bold tabular-nums transition-colors ${
+                      dueHour === h && dueDay
+                        ? 'bg-accent text-bg'
+                        : 'bg-bg/60 text-text-dim hover:text-text'
+                    }`}
+                  >
+                    {String(h).padStart(2, '0')}
+                  </button>
+                ))}
+              </div>
+
+              <p className="mt-4 text-xs font-extrabold uppercase tracking-wide text-text-faint">
+                {t('tasks.due.min')}
+              </p>
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
+                {MINUTES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setDueMinute(m);
+                      if (!dueDay) setDueDay(dayChips[0].date);
+                    }}
+                    className={`no-press rounded-lg py-1.5 text-xs font-bold tabular-nums transition-colors ${
+                      dueMinute === m && dueDay
+                        ? 'bg-accent text-bg'
+                        : 'bg-bg/60 text-text-dim hover:text-text'
+                    }`}
+                  >
+                    :{String(m).padStart(2, '0')}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDueDay(null);
+                    setDueOpen(false);
+                  }}
+                  className="chunk-btn flex-1 py-3 text-sm text-text"
+                >
+                  {t('tasks.done.clear')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!dueDay) setDueDay(dayChips[0].date);
+                    setDueOpen(false);
+                  }}
+                  className="no-press flex-1 rounded-xl bg-accent py-3 text-sm font-extrabold text-bg"
+                >
+                  {t('tasks.due.ok')}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {confirmClear && (
         <ConfirmModal

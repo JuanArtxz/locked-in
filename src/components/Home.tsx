@@ -23,6 +23,9 @@ interface HomeProps {
   /** members of my running jam with live/avatar info (null when not jamming) */
   jamRoom: JamRoomMember[] | null;
   onCheer: (userId: string) => void;
+  /** a task sent over from the Tasks tab — lands in the "working on" input */
+  prefillTask: string | null;
+  onPrefillConsumed: () => void;
 }
 
 const BREAK_OPTIONS = [
@@ -50,6 +53,8 @@ export function Home({
   onOpenHabits,
   jamRoom,
   onCheer,
+  prefillTask,
+  onPrefillConsumed,
 }: HomeProps) {
   const [task, setTask] = useState('');
   const [project, setProject] = useState('');
@@ -58,6 +63,13 @@ export function Home({
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [breakChoice, setBreakChoice] = useState<number | null>(BREAK_OPTIONS[0].sec);
+
+  useEffect(() => {
+    if (prefillTask) {
+      setTask(prefillTask);
+      onPrefillConsumed();
+    }
+  }, [prefillTask, onPrefillConsumed]);
 
   // clock customizer popover (focus screen)
   const [clockOpen, setClockOpen] = useState(false);
