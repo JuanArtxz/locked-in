@@ -1281,7 +1281,8 @@ export function GroupView({
         </button>
       )}
 
-      {micAsk && (
+      {micAsk &&
+        createPortal(
         <div
           className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setMicAsk(false)}
@@ -1313,7 +1314,8 @@ export function GroupView({
               {t('misc.cancel')}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {viewImg && (
@@ -1491,8 +1493,9 @@ export function GroupView({
         </form>
       </div>
 
-      {/* start-jam modal: what to focus on + who's aboard */}
-      {startingJam && (
+      {/* start-jam modal: what to focus on + who's aboard (portaled) */}
+      {startingJam &&
+        createPortal(
         <div
           className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setStartingJam(false)}
@@ -1571,7 +1574,8 @@ export function GroupView({
               {t('misc.cancel')}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* group management — lives in the right-hand rail (portal) */}
@@ -1737,8 +1741,9 @@ export function GroupView({
           railEl,
         )}
 
-      {/* add-member modal — real popup, big rows */}
-      {showAdd && (
+      {/* add-member modal — portaled so nothing paints over it */}
+      {showAdd &&
+        createPortal(
         <div
           className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setShowAdd(false)}
@@ -1777,11 +1782,13 @@ export function GroupView({
               {t('misc.cancel')}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {/* weekly goal modal — its own proper popup */}
-      {editingGoal && (
+      {/* weekly goal modal — its own proper popup (portaled) */}
+      {editingGoal &&
+        createPortal(
         <div
           className="animate-fade-in fixed inset-0 z-[65] flex items-center justify-center bg-black/80 px-6"
           onMouseDown={(e) => e.target === e.currentTarget && setEditingGoal(false)}
@@ -1835,7 +1842,8 @@ export function GroupView({
               {t('misc.cancel')}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {confirmKick && (

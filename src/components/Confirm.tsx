@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { t } from '../lib/i18n';
 import { Mascot } from './Mascot';
 
@@ -24,7 +25,9 @@ export function ConfirmModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  // portaled to <body>: ancestors with opacity/transform animations create
+  // stacking contexts that let later siblings paint OVER a nested fixed modal
+  return createPortal(
     <div
       className="animate-fade-in fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
@@ -55,6 +58,7 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
