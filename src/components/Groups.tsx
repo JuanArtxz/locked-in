@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as groups from '../lib/groups';
 import type { GroupMessage, GroupSummary } from '../lib/groups';
 import * as chat from '../lib/chat';
@@ -204,6 +205,8 @@ interface GroupViewProps {
   onStartJam: (task: string, pomo: string | null) => void;
   onJoinJam: (task: string, startedAtIso: string, pomo: string | null) => void;
   onLeaveJam: () => void;
+  /** third-column rail element — the management panel portals into it */
+  railEl?: HTMLElement | null;
   meInJam: boolean;
   /** groupmates typing in THIS group right now (userId → last keystroke ts) */
   typing?: Map<string, number>;
@@ -222,11 +225,11 @@ export function GroupView({
   onLeaveJam,
   meInJam,
   typing,
+  railEl,
 }: GroupViewProps) {
   const { group, members, meAdmin } = summary;
   const [messages, setMessages] = useState<GroupMessage[] | null>(null);
   const [draft, setDraft] = useState('');
-  const [showMembers, setShowMembers] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(group.name);
@@ -679,11 +682,7 @@ export function GroupView({
           >
             ←
           </button>
-          <button
-            type="button"
-            onClick={() => setShowMembers((s) => !s)}
-            className="flex min-w-0 items-center gap-2 text-left"
-          >
+          <div className="flex min-w-0 items-center gap-2 text-left">
             {/* stacked member avatars */}
             <div className="flex -space-x-2">
               {members.slice(0, 3).map((m) => (
@@ -705,7 +704,7 @@ export function GroupView({
                 {t('grp.members', String(members.length))}
               </div>
             </div>
-          </button>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <div className="relative" data-pop>
@@ -738,13 +737,6 @@ export function GroupView({
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setShowMembers((s) => !s)}
-            className="rounded-lg p-1.5 text-text-dim hover:bg-surface-hover hover:text-text"
-          >
-            <DotsIcon size={16} />
-          </button>
         </div>
       </div>
 
@@ -1572,14 +1564,11 @@ export function GroupView({
         </div>
       )}
 
-      {/* members drawer */}
-      {showMembers && (
-        <div
-          className="animate-fade-in absolute inset-0 z-30 flex justify-end bg-black/50"
-          onMouseDown={(e) => e.target === e.currentTarget && setShowMembers(false)}
-        >
-          <div className="animate-slide-in-right flex h-full w-72 flex-col border-l-2 border-border-strong bg-surface">
-            <div className="flex items-center justify-between border-b border-border p-3">
+      {/* group management — lives in the right-hand rail (portal) */}
+      {railEl &&
+        createPortal(
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between rounded-2xl bg-bg/60 p-3">
               {renaming ? (
                 <input
                   autoFocus
@@ -1604,17 +1593,10 @@ export function GroupView({
                   {meAdmin && <span className="ml-1.5 text-[11px] text-text-faint">✎</span>}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setShowMembers(false)}
-                className="shrink-0 pl-2 text-text-faint hover:text-text"
-              >
-                ✕
-              </button>
             </div>
 
             {/* group identity: photo (admins upload) + invite link */}
-            <div className="flex items-center gap-3 border-b border-border p-3">
+            <div className="flex items-center gap-3 rounded-2xl bg-bg/60 p-3">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-border-strong bg-bg text-base font-extrabold uppercase text-text-dim">
                 {group.avatar_b64 ? (
                   <img src={group.avatar_b64} alt="" className="h-full w-full object-cover" />
@@ -1653,7 +1635,7 @@ export function GroupView({
               />
             </div>
 
-            <div className="scrollbar-none min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
+            <div className="space-y-1.5 rounded-2xl bg-bg/60 p-3">
               <div className="px-1 py-1 text-[10px] font-extrabold uppercase tracking-wide text-text-dim">
                 {t('grp.members', String(members.length))}
               </div>
@@ -1733,18 +1715,16 @@ export function GroupView({
               )}
             </div>
 
-            <div className="border-t border-border p-3">
-              <button
-                type="button"
-                onClick={() => setConfirmLeave(true)}
-                className="chunk-btn w-full py-2.5 text-[13px] font-bold text-danger"
-              >
-                {group.owner === myUserId ? t('grp.delete') : t('grp.leave')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <button
+              type="button"
+              onClick={() => setConfirmLeave(true)}
+              className="chunk-btn w-full py-2.5 text-[13px] font-bold text-danger"
+            >
+              {group.owner === myUserId ? t('grp.delete') : t('grp.leave')}
+            </button>
+          </div>,
+          railEl,
+        )}
 
       {/* add-member modal — real popup, big rows */}
       {showAdd && (

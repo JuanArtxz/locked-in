@@ -694,109 +694,6 @@ function ChatDetailsPanel({
   );
 }
 
-/** Right-hand details rail for an open GROUP: identity, members and invite. */
-function GroupDetailsPanel({
-  summary,
-  soc,
-  onError,
-}: {
-  summary: FriendsProps['groups']['list'][number];
-  soc: FriendsProps['social'];
-  onError: (m: string) => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const g = summary.group;
-  const members = summary.members;
-
-  async function copyInvite() {
-    const gl = await import('../lib/groups');
-    const code = await gl.ensureInviteCode(g.id);
-    if (!code) {
-      onError(t('fr.err.generic'));
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(`lockedin:group/${code}`);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 3000);
-    } catch {
-      onError(t('fr.err.generic'));
-    }
-  }
-
-  return (
-    <aside className="cascade scrollbar-none my-4 mr-4 hidden w-[290px] shrink-0 flex-col gap-4 overflow-y-auto rounded-3xl bg-surface p-4 xl:flex">
-      <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-bg/60 p-6 text-center">
-        {g.avatar_b64 ? (
-          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-border-strong">
-            <img src={g.avatar_b64} alt="" className="h-full w-full object-cover" />
-          </div>
-        ) : (
-          <div className="flex -space-x-4">
-            {members.slice(0, 3).map((m) => (
-              <div
-                key={m.user_id}
-                className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-bg bg-surface text-xs font-extrabold uppercase text-text-dim"
-              >
-                {m.avatar ? (
-                  <img src={m.avatar} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  m.username.slice(0, 2)
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="mt-2 w-full truncate text-base font-extrabold text-text">
-          {cleanProfanity(g.name)}
-        </div>
-        <div className="text-xs font-semibold text-text-faint">
-          {t('grp.members', String(members.length))}
-        </div>
-      </div>
-
-      <div className="rounded-2xl bg-bg/60 p-4">
-        <div className="mb-2.5 text-[11px] font-extrabold uppercase tracking-wide text-text-faint">
-          {t('grp.memberlist')}
-        </div>
-        <div className="space-y-2.5">
-          {members.map((m) => {
-            const live = social.isLive(soc.presence.get(m.user_id));
-            return (
-              <div key={m.user_id} className="flex items-center gap-2.5">
-                <div className="relative shrink-0">
-                  <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border-strong bg-surface text-[10px] font-extrabold uppercase text-text-dim">
-                    {m.avatar ? (
-                      <img src={m.avatar} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      m.username.slice(0, 2)
-                    )}
-                  </div>
-                  {live && (
-                    <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg bg-accent" />
-                  )}
-                </div>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-text">
-                  @{m.username}
-                </span>
-                {m.is_admin && (
-                  <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-[10px] font-bold text-text-dim">
-                    {t('grp.admin')}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <button type="button" onClick={copyInvite} className="chunk-btn py-2.5 text-[13px] text-text">
-        {copied ? t('grp.invite.copied') : t('grp.invite.copy')}
-      </button>
-    </aside>
-  );
-}
-
 export function FriendsPage({
   signedIn,
   social: soc,
@@ -877,6 +774,8 @@ export function FriendsPage({
     }
   }
   const [groupOpen, setGroupOpen] = useState<number | null>(null); // group id
+  // third-column element the open group's management panel portals into
+  const [groupRail, setGroupRail] = useState<HTMLElement | null>(null);
   const [creatingGroup, setCreatingGroup] = useState(false);
 
   function openGroup(id: number) {
@@ -1732,6 +1631,7 @@ export function FriendsPage({
                 onJoinGroupJam(openGroupSummary.group.id, task, startedAt, pomo)
               }
               onLeaveJam={onLeaveGroupJam}
+              railEl={groupRail}
             />
           </div>
         ) : (
@@ -1743,9 +1643,12 @@ export function FriendsPage({
         </div>
       </main>
 
-      {/* third column: group details rail */}
+      {/* third column: the open group manages itself in here (portal target) */}
       {openGroupSummary && !chattingFriend && (
-        <GroupDetailsPanel summary={openGroupSummary} soc={soc} onError={onError} />
+        <aside
+          ref={setGroupRail}
+          className="cascade scrollbar-none my-4 mr-4 hidden w-[290px] shrink-0 flex-col gap-4 overflow-y-auto rounded-3xl bg-surface p-4 xl:flex"
+        />
       )}
 
       {/* third column: details rail for the open DM (wide windows only) */}
