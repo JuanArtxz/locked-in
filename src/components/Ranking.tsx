@@ -155,10 +155,8 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
   const myIdx = ranking.findIndex((e) => e.isMe);
   const mine = ranking[myIdx];
   const sum = ranking.reduce((acc, e) => acc + secOf(e), 0);
-  const avg = ranking.length ? sum / ranking.length : 0;
 
   const bestDayHolder = [...entries].sort((a, b) => b.bestDay - a.bestDay)[0];
-  const bestSessionHolder = [...entries].sort((a, b) => b.bestSession - a.bestSession)[0];
 
   const medals = ['🥇', '🥈', '🥉'];
   const podium = ranking.slice(0, 3);
@@ -240,7 +238,7 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
               })}
         </div>
 
-        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
           {/* LEFT: positions 4–10 */}
           <div className="flex flex-col gap-5">
 
@@ -284,7 +282,7 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
           {/* RIGHT: my position + squad stats */}
           <div className="flex flex-col gap-4">
             {mine && (
-              <div className="chunk flex items-center gap-4 p-5">
+              <div className="chunk flex flex-1 items-center gap-4 p-5">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent-dim font-mono text-xl font-extrabold text-accent">
                   #{myIdx + 1}
                 </div>
@@ -303,7 +301,7 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
               </div>
             )}
 
-            <div className="chunk p-5">
+            <div className="chunk flex flex-1 flex-col justify-center p-5">
               <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-faint">
                 {t('rank.sum')}
               </div>
@@ -312,16 +310,7 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
                 className="mt-1.5 block font-mono text-2xl font-extrabold tabular-nums text-text"
               />
             </div>
-            <div className="chunk p-5">
-              <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-faint">
-                {t('rank.avg')}
-              </div>
-              <AnimatedDuration
-                sec={avg}
-                className="mt-1.5 block font-mono text-2xl font-extrabold tabular-nums text-text"
-              />
-            </div>
-            <div className="chunk p-5">
+            <div className="chunk flex flex-1 flex-col justify-center p-5">
               <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-faint">
                 {t('rank.bestday')}
               </div>
@@ -336,27 +325,6 @@ export function RankingPage({ soc, signedIn }: { soc: SocialHook; signedIn: bool
                     }`}
                   >
                     {nameOf(bestDayHolder)}
-                  </div>
-                </>
-              ) : (
-                <div className="mt-1.5 text-2xl font-extrabold text-text-faint">—</div>
-              )}
-            </div>
-            <div className="chunk p-5">
-              <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-faint">
-                {t('rank.bestsession')}
-              </div>
-              {bestSessionHolder && bestSessionHolder.bestSession > 0 ? (
-                <>
-                  <div className="mt-1.5 font-mono text-2xl font-extrabold tabular-nums text-text">
-                    {formatDurationShort(bestSessionHolder.bestSession)}
-                  </div>
-                  <div
-                    className={`truncate text-[12px] font-bold ${
-                      bestSessionHolder.isMe ? 'text-accent' : 'text-text-dim'
-                    }`}
-                  >
-                    {nameOf(bestSessionHolder)}
                   </div>
                 </>
               ) : (
