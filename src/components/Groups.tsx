@@ -670,7 +670,7 @@ export function GroupView({
       }}
     >
       {/* header */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-between gap-2 bg-white/[0.03] px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <button
             type="button"
@@ -749,7 +749,7 @@ export function GroupView({
       </div>
 
       {/* jam banner */}
-      <div className="shrink-0 border-b border-border bg-accent-dim/40 px-4 py-2.5">
+      <div className="shrink-0 bg-accent-dim/40 px-4 py-2.5">
         {jamActive ? (
           <div className="flex items-center gap-2.5">
             <HeadphonesIcon size={15} className="text-accent" />
@@ -817,7 +817,7 @@ export function GroupView({
       {/* collective weekly goal — sum of the week_sec every member already
           publishes to groupmates; no new data is exposed */}
       {(group.week_goal_hours || meAdmin) && (
-        <div className="shrink-0 border-b border-border px-4 py-2">
+        <div className="shrink-0 bg-white/[0.02] px-4 py-2">
           {group.week_goal_hours ? (
             (() => {
               // ONLY time focused inside THIS group's jam counts — personal
@@ -874,7 +874,7 @@ export function GroupView({
           const pm = messages?.find((x) => x.id === pinId);
           if (!pm) return null;
           return (
-            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface/70 px-4 py-1.5">
+            <div className="flex shrink-0 items-center gap-2 bg-surface/70 px-4 py-1.5">
               <PinIcon size={13} className="shrink-0 text-accent" />
               <button
                 type="button"
@@ -1071,13 +1071,15 @@ export function GroupView({
                     </div>
                   ) : m.kind === 'voice' ? (
                     <div
-                      className={`bubble-shadow flex items-center gap-2 rounded-2xl border-2 border-border-strong px-3 py-2 ${
-                        m.mine ? 'rounded-br-md bg-accent' : 'rounded-bl-md bg-surface'
+                      className={`bubble-shadow flex items-center gap-2 rounded-2xl px-3 py-2 ${
+                        m.mine
+                          ? `rounded-br-md ${theme ? '' : 'bg-white/[0.08]'}`
+                          : 'rounded-bl-md bg-surface'
                       }`}
                       style={m.mine && theme ? { backgroundColor: theme } : undefined}
                     >
                       {m.body ? (
-                        <VoicePlayer src={m.body} mine={m.mine} />
+                        <VoicePlayer src={m.body} mine={m.mine && !!theme} />
                       ) : (
                         <span className="px-2 py-1 text-xs italic text-text-faint">
                           🔒 {t('msg.undecryptable')}
@@ -1086,9 +1088,9 @@ export function GroupView({
                     </div>
                   ) : (
                     <div
-                      className={`bubble-shadow rounded-2xl border-2 border-border-strong px-4 py-2.5 text-[15px] font-medium leading-relaxed ${
+                      className={`bubble-shadow rounded-2xl px-4 py-2.5 text-[15px] font-medium leading-relaxed ${
                         m.mine
-                          ? `rounded-br-md bg-accent text-bg ${firstOfGroup ? '' : 'rounded-tr-md'}`
+                          ? `rounded-br-md ${theme ? 'text-bg' : 'bg-white/[0.08] text-text'} ${firstOfGroup ? '' : 'rounded-tr-md'}`
                           : `rounded-bl-md bg-surface text-text ${firstOfGroup ? '' : 'rounded-tl-md'}`
                       }`}
                       style={m.mine && theme ? { backgroundColor: theme } : undefined}
@@ -1102,7 +1104,7 @@ export function GroupView({
                       )}
                       <span
                         className={`ml-2 align-baseline font-mono text-[11px] tabular-nums ${
-                          m.mine ? 'text-bg/60' : 'text-text-faint'
+                          m.mine && theme ? 'text-bg/60' : 'text-text-faint'
                         }`}
                       >
                         {m.edited_at ? `${t('msg.edited')} · ` : ''}
@@ -1321,9 +1323,9 @@ export function GroupView({
       )}
 
       {/* composer */}
-      <div className="shrink-0 border-t border-border">
+      <div className="shrink-0 bg-white/[0.03]">
         {replyTo && (
-          <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-1.5">
+          <div className="flex items-center justify-between gap-2 bg-surface px-4 py-1.5">
             <div className="min-w-0 truncate text-[11px] text-text-dim">
               <ReplyIcon size={11} className="mr-1 inline" />
               <span className="font-bold">@{replyTo.senderName}</span>{' '}
@@ -1343,7 +1345,7 @@ export function GroupView({
           </div>
         )}
         {pendingImg && (
-          <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2">
+          <div className="flex items-center gap-3 bg-surface px-4 py-2">
             <img src={pendingImg} alt="" className="h-14 rounded-lg border border-border" />
             <button
               type="button"
@@ -1359,8 +1361,9 @@ export function GroupView({
             e.preventDefault();
             send();
           }}
-          className="flex items-center gap-2 px-4 py-3.5"
+          className="flex items-center px-4 py-3.5"
         >
+          <div className="flex w-full items-center gap-1 rounded-full bg-bg/60 py-1.5 pl-2 pr-1.5">
           <input
             ref={imgInputRef}
             type="file"
@@ -1375,9 +1378,9 @@ export function GroupView({
             type="button"
             onClick={() => imgInputRef.current?.click()}
             title={t('attach.image')}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-dim transition-colors hover:bg-white/5 hover:text-text"
           >
-            <ImageIcon size={17} />
+            <ImageIcon size={16} />
           </button>
           <div data-pop className="relative shrink-0">
             <button
@@ -1387,9 +1390,9 @@ export function GroupView({
                 setEmojiOpen(false);
               }}
               title={t('attach.sticker')}
-              className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-text-dim transition-colors hover:bg-white/5 hover:text-text"
             >
-              <HeadphonesIcon size={17} />
+              <HeadphonesIcon size={16} />
             </button>
             {stickerOpen && (
               <div className="animate-scale-in absolute bottom-14 left-0 z-30 grid w-64 grid-cols-4 gap-1.5 rounded-xl border-2 border-border-strong bg-surface p-2 shadow-2xl shadow-black/50">
@@ -1414,9 +1417,9 @@ export function GroupView({
                 setStickerOpen(false);
               }}
               title={t('attach.emoji')}
-              className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-text-dim transition-colors hover:bg-white/5 hover:text-text"
             >
-              <SmileIcon size={17} />
+              <SmileIcon size={16} />
             </button>
             {emojiOpen && (
               <div className="animate-scale-in absolute bottom-14 left-0 z-30 grid w-64 grid-cols-8 gap-0.5 rounded-2xl border-2 border-border-strong bg-surface p-2 shadow-2xl">
@@ -1450,13 +1453,13 @@ export function GroupView({
             }}
             placeholder={t('msg.placeholder.group')}
             maxLength={2000}
-            className="chunk-input min-w-0 flex-1 px-4 py-3 text-sm font-semibold text-text placeholder:font-medium placeholder:text-text-faint"
+            className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm font-semibold text-text placeholder:font-medium placeholder:text-text-faint focus:outline-none"
           />
           {recording ? (
             <button
               type="button"
               onClick={stopRecording}
-              className="flex h-11 shrink-0 items-center gap-2 rounded-xl border-2 border-danger bg-danger/15 px-3 font-mono text-xs font-extrabold tabular-nums text-danger"
+              className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-danger/15 px-3 font-mono text-xs font-extrabold tabular-nums text-danger"
             >
               <span className="h-2 w-2 animate-pulse-dot rounded-full bg-danger" />{' '}
               {fmtVoiceSec(recSec)} ■
@@ -1468,20 +1471,21 @@ export function GroupView({
                 type="button"
                 onClick={startRecording}
                 title={t('msg.voice.rec')}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 border-border-strong text-text-dim transition-colors hover:border-accent hover:text-text"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-dim transition-colors hover:bg-white/5 hover:text-text"
               >
-                <MicIcon size={17} />
+                <MicIcon size={16} />
               </button>
             )
           )}
           <button
             type="submit"
             disabled={!draft.trim() && !pendingImg}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-bg transition-all disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-bg transition-all disabled:opacity-40"
             style={theme ? { backgroundColor: theme } : undefined}
           >
-            <SendIcon size={17} />
+            <SendIcon size={15} />
           </button>
+          </div>
         </form>
       </div>
 
