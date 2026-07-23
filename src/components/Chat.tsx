@@ -1713,17 +1713,23 @@ export function ChatView({
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={!draft.trim() && !pendingImg}
-          title={t('msg.send')}
-          className={`flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-bg transition-all duration-200 ease-out ${
-            draft.trim() || pendingImg ? 'ml-0.5 w-9 scale-100 opacity-100' : 'ml-0 w-0 scale-50 opacity-0'
-          }`}
-          style={theme ? { backgroundColor: theme } : undefined}
+        {/* animated slot: the pill re-lays-out smoothly as this width tweens */}
+        <div
+          className="shrink-0 overflow-hidden transition-[width] duration-200 ease-out"
+          style={{ width: draft.trim() || pendingImg ? 42 : 0 }}
         >
-          <SendIcon size={15} />
-        </button>
+          <button
+            type="submit"
+            disabled={!draft.trim() && !pendingImg}
+            title={t('msg.send')}
+            className={`ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-bg transition-all duration-200 ease-out ${
+              draft.trim() || pendingImg ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+            }`}
+            style={theme ? { backgroundColor: theme } : undefined}
+          >
+            <SendIcon size={15} />
+          </button>
+        </div>
         </div>
       </form>
     </div>
