@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useToast } from '../hooks/useToast';
 import * as chat from '../lib/chat';
 import * as media from '../lib/media';
@@ -318,6 +319,26 @@ export function DaySeparator({ iso }: { iso: string }) {
 }
 
 /** Fullscreen image viewer: Esc / click-outside closes; download + copy. */
+/** URLs become blue, clickable (system browser) — plain text otherwise. */
+function linkify(text: string) {
+  const parts = text.split(/(https?:\/\/\S+)/gi);
+  if (parts.length === 1) return text;
+  return parts.map((p, i) =>
+    /^https?:\/\//i.test(p) ? (
+      <button
+        key={i}
+        type="button"
+        onClick={() => openUrl(p).catch(() => {})}
+        className="inline break-all text-left font-medium text-sky-400 underline underline-offset-2 hover:text-sky-300"
+      >
+        {p}
+      </button>
+    ) : (
+      p
+    ),
+  );
+}
+
 export function ImageViewer({
   src,
   onClose,
@@ -1247,7 +1268,7 @@ export function ChatView({
                           🔒 {t('msg.undecryptable')}
                         </span>
                       ) : (
-                        m.text
+                        linkify(m.text)
                       )}
                       {(lastOfGroup || m.edited_at) && (
                         <span

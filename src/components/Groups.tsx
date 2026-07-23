@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import * as groups from '../lib/groups';
 import type { GroupMessage, GroupSummary } from '../lib/groups';
 import * as chat from '../lib/chat';
@@ -346,20 +347,45 @@ export function GroupView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myUserId, group.id, members.map((mm) => mm.user_id).join(',')]);
 
-  // @mention highlight — my own name glows in group messages
+  // rich text: @member mentions (mine glows) + clickable links
   const myName = members.find((mm) => mm.user_id === myUserId)?.username ?? '';
+  const memberNames = members.map((mm) => mm.username);
   const renderBody = (body: string) => {
-    if (!myName || !body.toLowerCase().includes(`@${myName.toLowerCase()}`)) return body;
-    const parts = body.split(new RegExp(`(@${myName})`, 'ig'));
-    return parts.map((p, i) =>
-      p.toLowerCase() === `@${myName.toLowerCase()}` ? (
-        <mark key={i} className="rounded bg-accent/30 px-0.5 font-bold text-text">
-          {p}
-        </mark>
-      ) : (
-        p
-      ),
+    const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const namesAlt = memberNames.map(esc).join('|');
+    const pattern = new RegExp(
+      `(https?:\\/\\/\\S+${namesAlt ? `|@(?:${namesAlt})\\b` : ''})`,
+      'ig',
     );
+    const parts = body.split(pattern);
+    if (parts.length === 1) return body;
+    return parts.map((p, i) => {
+      if (/^https?:\/\//i.test(p)) {
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => openUrl(p).catch(() => {})}
+            className="inline break-all text-left font-medium text-sky-400 underline underline-offset-2 hover:text-sky-300"
+          >
+            {p}
+          </button>
+        );
+      }
+      if (p.startsWith('@') && memberNames.some((n) => n.toLowerCase() === p.slice(1).toLowerCase())) {
+        const isMe = myName && p.slice(1).toLowerCase() === myName.toLowerCase();
+        return isMe ? (
+          <mark key={i} className="rounded bg-accent/30 px-0.5 font-bold text-text">
+            {p}
+          </mark>
+        ) : (
+          <span key={i} className="font-bold text-accent">
+            {p}
+          </span>
+        );
+      }
+      return p;
+    });
   };
 
   // a member counts as in the jam only if in_jam AND presence says they're
@@ -374,6 +400,29 @@ export function GroupView({
   const jamActive = !!group.jam_started_at && (jamMembers.length > 0 || meInJam);
   const addable = friends.filter((f) => !members.some((m) => m.user_id === f.userId));
   const canAddMore = members.length < groups.GROUP_MAX;
+
+  // @mention autocomplete for the composer
+  const draftInputRef = useRef<HTMLInputElement>(null);
+  const [mentionQ, setMentionQ] = useState<string | null>(null);
+  const mentionCandidates =
+    mentionQ === null
+      ? []
+      : members
+          .filter((mm) => mm.user_id !== myUserId)
+          .filter((mm) => mm.username.toLowerCase().startsWith(mentionQ.toLowerCase()))
+          .slice(0, 5);
+  function pickMention(username: string) {
+    const el = draftInputRef.current;
+    const caret = el?.selectionStart ?? draft.length;
+    const before = draft.slice(0, caret).replace(/@[\w]*$/, `@${username} `);
+    const after = draft.slice(caret);
+    setDraft(before + after);
+    setMentionQ(null);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(before.length, before.length);
+    });
+  }
 
   // staged image + reply + voice recording (mirrors the DM composer)
   const [pendingImg, setPendingImg] = useState<string | null>(null);
@@ -931,14 +980,6 @@ export function GroupView({
             prev.kind === m.kind &&
             new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
           const firstOfGroup = !tight;
-          const next = messages[i + 1];
-          const lastOfGroup =
-            !next ||
-            next.kind === 'system' ||
-            next.sender !== m.sender ||
-            next.kind !== m.kind ||
-            new Date(next.created_at).toDateString() !== new Date(m.created_at).toDateString() ||
-            new Date(next.created_at).getTime() - new Date(m.created_at).getTime() >= 5 * 60_000;
           if (m.kind === 'system') {
             return (
               <div key={m.id}>
@@ -969,9 +1010,9 @@ export function GroupView({
                   className={`flex max-w-[80%] items-end gap-2.5 ${m.mine ? 'flex-row-reverse' : ''}`}
                 >
                   {!m.mine && (
-                    <div className="w-7 shrink-0">
-                      {lastOfGroup && (
-                        <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-border-strong bg-bg text-[10px] font-extrabold uppercase text-text">
+                    <div className="w-9 shrink-0 self-start pt-0.5">
+                      {firstOfGroup && (
+                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border-strong bg-bg text-[11px] font-extrabold uppercase text-text">
                           {(() => {
                             const av = members.find((mm) => mm.user_id === m.sender)?.avatar;
                             return av ? (
@@ -986,8 +1027,11 @@ export function GroupView({
                   )}
                   <div className="min-w-0">
                   {!m.mine && firstOfGroup && (
-                    <div className="mb-0.5 ml-1 text-[10px] font-bold text-text-faint">
-                      @{m.senderName}
+                    <div className="mb-1 ml-1 text-[13px] font-bold text-text">
+                      {m.senderName}
+                      <span className="ml-2 align-baseline font-mono text-[10px] font-medium tabular-nums text-text-faint">
+                        {timeLabel(m.created_at)}
+                      </span>
                     </div>
                   )}
                   {quoted && (
@@ -1365,8 +1409,26 @@ export function GroupView({
             e.preventDefault();
             send();
           }}
-          className="flex items-center px-4 py-3.5"
+          className="relative flex items-center px-4 py-3.5"
         >
+          {mentionQ !== null && mentionCandidates.length > 0 && (
+            <div className="animate-scale-in absolute bottom-full left-6 z-30 mb-1 w-60 rounded-2xl border border-border bg-surface p-1.5 shadow-2xl shadow-black/50">
+              {mentionCandidates.map((mm) => (
+                <button
+                  key={mm.user_id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickMention(mm.username)}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-surface-hover"
+                >
+                  <MiniAvatar name={mm.username} photo={mm.avatar} live={isLive(mm.user_id)} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-text">
+                    @{mm.username}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex w-full items-center gap-1 rounded-full bg-bg/60 py-1.5 pl-2 pr-1.5">
           <input
             ref={imgInputRef}
@@ -1441,11 +1503,26 @@ export function GroupView({
             )}
           </div>
           <input
+            ref={draftInputRef}
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
               typingChanRef.current?.sendTyping();
+              const caret = e.target.selectionStart ?? e.target.value.length;
+              const mm = /(?:^|\s)@([\w]*)$/.exec(e.target.value.slice(0, caret));
+              setMentionQ(mm ? mm[1] : null);
             }}
+            onKeyDown={(e) => {
+              if (mentionQ !== null && mentionCandidates.length > 0) {
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  pickMention(mentionCandidates[0].username);
+                } else if (e.key === 'Escape') {
+                  setMentionQ(null);
+                }
+              }
+            }}
+            onBlur={() => window.setTimeout(() => setMentionQ(null), 150)}
             onPaste={(e) => {
               const file = Array.from(e.clipboardData.files).find((f) =>
                 f.type.startsWith('image/'),
