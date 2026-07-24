@@ -521,6 +521,15 @@ export async function fetchPendingJamInvites(): Promise<JamInvite[]> {
 }
 
 /** One row by id (freshest status). */
+/** Exact-username lookup through the SECURITY DEFINER RPC (never dumps the
+ *  directory). Resolves a Discord join secret that carries only an @name. */
+export async function lookupProfileByName(
+  name: string,
+): Promise<{ user_id: string; username: string } | null> {
+  const { data } = await supabase.rpc('lookup_profile', { name }).maybeSingle();
+  return (data as { user_id: string; username: string } | null) ?? null;
+}
+
 /** Single profile by id — friends/groupmates only (RLS). Used when the local
  *  friends state hasn't loaded yet (jam invite arriving during app boot). */
 export async function fetchProfileById(userId: string): Promise<Profile | null> {

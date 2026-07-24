@@ -1746,3 +1746,46 @@ begin
   end if;
   return new;
 end $$;
+
+-- ========== jam invite flood guard (v0.49.9) ==========
+-- jam_invites rows are DELETED by the app (cancel/expiry sweep), so a rate
+-- limit that counts live rows is trivially reset by delete+insert loops. This
+-- append-only log is the real counter: no RLS policies at all, so only the
+-- SECURITY DEFINER trigger can touch it. Without it, one accepted friend could
+-- spam fullscreen JAM prompts forever (the pair-unique index alone doesn't
+-- stop insert → delete → insert).
+create table if not exists public.jam_invite_rate (
+  id bigint generated always as identity primary key,
+  from_user uuid not null references auth.users(id) on delete cascade,
+  to_user uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.jam_invite_rate enable row level security;
+create index if not exists jam_invite_rate_from
+  on public.jam_invite_rate (from_user, created_at desc);
+
+create or replace function public.jam_invite_rate_limit()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  recent_pair int;
+  recent_all int;
+begin
+  delete from jam_invite_rate where created_at < now() - interval '2 hours';
+  select count(*) into recent_pair from jam_invite_rate
+    where from_user = new.from_user and to_user = new.to_user
+      and created_at > now() - interval '1 minute';
+  if recent_pair >= 3 then
+    raise exception 'jam rate limited';
+  end if;
+  select count(*) into recent_all from jam_invite_rate
+    where from_user = new.from_user and created_at > now() - interval '1 hour';
+  if recent_all >= 40 then
+    raise exception 'jam rate limited';
+  end if;
+  insert into jam_invite_rate (from_user, to_user) values (new.from_user, new.to_user);
+  return new;
+end;
+$$;
+drop trigger if exists jam_invites_rate on public.jam_invites;
+create trigger jam_invites_rate before insert on public.jam_invites
+  for each row execute function public.jam_invite_rate_limit();

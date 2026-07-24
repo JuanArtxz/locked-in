@@ -1186,6 +1186,10 @@ const dict: Record<string, { pt: string; en: string }> = {
     pt: '@{0} não tá focando agora.',
     en: "@{0} isn't focusing right now.",
   },
+  'jam.ratelimited': {
+    pt: 'Muitos convites de JAM seguidos. Espera um pouco.',
+    en: 'Too many JAM invites in a row. Give it a minute.',
+  },
   'jam.gone': {
     pt: 'Esse convite não vale mais.',
     en: 'That invite is no longer valid.',

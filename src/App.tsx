@@ -839,8 +839,11 @@ function AppShell() {
         // closed at two people, so a running jam never advertises a secret.
         if (!focus.jam && activeGroupJamRef.current === null && signedIn && myId && myName) {
           const safeTask = (sess.task || '').replace(/\|/g, '/').slice(0, 40);
-          joinSecret = `1|${myId}|${myName}|${startEpoch}|${safeTask}`;
-          partyId = `solo-${myId}`;
+          // v2 carries NO account id: Discord's own docs warn that activity
+          // secrets can be read by anyone who sees the presence, so the joiner
+          // resolves the @name through the same lookup RPC the app already uses
+          joinSecret = `2|${myName}|${startEpoch}|${safeTask}`;
+          partyId = `solo-${myName}`;
           partyCount = 1;
           partyMax = 2;
         }
@@ -1272,6 +1275,7 @@ function AppShell() {
         const startedAt = s?.started_at ?? new Date().toISOString();
         const err = await jam.send(f.userId, f.username, 'invite', task, startedAt);
         if (err === 'pending') pushToast(t('jam.pending', f.username), 'info');
+        else if (err && /rate limited/i.test(err)) pushToast(t('jam.ratelimited'), 'error');
         else if (err) onError(err);
         else {
           pushToast(t('jam.sent.toast', f.username), 'info');
@@ -1286,6 +1290,7 @@ function AppShell() {
         const task = row.task || t('jam.generic');
         const err = await jam.send(f.userId, f.username, 'request', task, row.started_at);
         if (err === 'pending') pushToast(t('jam.pending', f.username), 'info');
+        else if (err && /rate limited/i.test(err)) pushToast(t('jam.ratelimited'), 'error');
         else if (err) onError(err);
         else {
           pushToast(t('jam.sent.toast', f.username), 'info');
@@ -1299,20 +1304,41 @@ function AppShell() {
   // Discord "Join" clicked on someone's status: the secret carries the host's
   // id/username/session — fire the ordinary jam REQUEST at them. Ref pattern so
   // the once-registered listener always sees fresh state.
-  const discordJoinRef = useRef<(secret: string) => void>(() => {});
+  const discordJoinRef = useRef<(secret: string) => void | Promise<void>>(() => {});
   // the same click can arrive twice (live event + boot pull) — handle once
   const lastJoinRef = useRef<{ secret: string; at: number }>({ secret: '', at: 0 });
-  discordJoinRef.current = (secret) => {
+  discordJoinRef.current = async (secret) => {
     if (lastJoinRef.current.secret === secret && Date.now() - lastJoinRef.current.at < 15_000) {
       return;
     }
     lastJoinRef.current = { secret, at: Date.now() };
     const parts = secret.split('|');
-    if (parts.length < 5 || parts[0] !== '1') return;
-    const [, uid, uname, epoch, ...taskParts] = parts;
+    // v2 = "2|username|epoch|task" (no account id on the wire); v1 cards from
+    // older builds still carry the id and stay readable
+    let uid: string | undefined;
+    let uname: string | undefined;
+    let epoch: string | undefined;
+    let taskParts: string[] = [];
+    if (parts[0] === '2' && parts.length >= 4) {
+      [, uname, epoch, ...taskParts] = parts;
+    } else if (parts[0] === '1' && parts.length >= 5) {
+      [, uid, uname, epoch, ...taskParts] = parts;
+    } else {
+      return;
+    }
     if (!signedIn) {
       pushToast(t('jam.join.login'), 'error');
       return;
+    }
+    if (!uname) return;
+    if (!uid) {
+      const prof = await socialLib.lookupProfileByName(uname).catch(() => null);
+      if (!prof) {
+        pushToast(t('fr.err.notfound'), 'error');
+        return;
+      }
+      uid = prof.user_id;
+      uname = prof.username;
     }
     if (social.state?.me?.user_id === uid) return;
     // already jamming (any size) — 1:1 flows are closed, same rule as sendJam
@@ -1344,13 +1370,17 @@ function AppShell() {
     // host's LIVE task/start so the request matches what they're doing now
     const task = (presRow?.task || taskParts.join('|')) || t('jam.generic');
     const startedAt = presRow?.started_at ?? new Date(Number(epoch) * 1000).toISOString();
-    jam.send(uid, uname, 'request', task, startedAt).then((err) => {
-      if (err === 'pending') pushToast(t('jam.pending', uname), 'info');
+    const targetId = uid;
+    const targetName = uname;
+    jam.send(targetId, targetName, 'request', task, startedAt).then((err) => {
+      if (err === 'pending') pushToast(t('jam.pending', targetName), 'info');
       // RLS refuses inserts between non-friends — friendly message, not a raw 42501
       else if (err && /security|policy|42501/i.test(err)) {
-        pushToast(t('jam.needfriend', uname), 'error');
+        pushToast(t('jam.needfriend', targetName), 'error');
+      } else if (err && /rate limited/i.test(err)) {
+        pushToast(t('jam.ratelimited'), 'error');
       } else if (err) onError(err);
-      else pushToast(t('jam.sent.toast', uname), 'info');
+      else pushToast(t('jam.sent.toast', targetName), 'info');
     });
   };
   useEffect(() => {
