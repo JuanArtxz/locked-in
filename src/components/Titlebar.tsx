@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { t } from '../lib/i18n';
-import logoUrl from '../assets/logo.png';
+import { Wordmark } from './Wordmark';
 import { warmReload } from '../lib/reload';
 import type { SocialHook } from '../hooks/useSocial';
 
@@ -242,12 +242,7 @@ export function Titlebar({
         data-tauri-drag-region
         className="hidden shrink-0 items-center pl-4 pt-2 min-[1000px]:flex"
       >
-        <img
-          src={logoUrl}
-          alt="Locked In"
-          draggable={false}
-          className="pointer-events-none h-4 w-auto select-none min-[1280px]:h-5 min-[1600px]:h-[26px]"
-        />
+        <Wordmark className="h-4 min-[1280px]:h-5 min-[1600px]:h-[26px]" />
       </div>
 
       {/* center: floating pill nav — absolutely centered on the WINDOW so it

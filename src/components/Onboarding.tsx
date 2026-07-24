@@ -3,7 +3,7 @@ import type { Settings } from '../types';
 import { t } from '../lib/i18n';
 import * as social from '../lib/social';
 import { ACCENT_PRESETS } from './Settings';
-import logoUrl from '../assets/logo.png';
+import { Wordmark } from './Wordmark';
 
 interface OnboardingProps {
   settings: Settings;
@@ -254,12 +254,7 @@ export function Onboarding({ settings, update, signedIn, onCreateAccount, onDone
         >
           {step === 'welcome' && (
             <>
-              <img
-                src={logoUrl}
-                alt="Locked In"
-                draggable={false}
-                className="pointer-events-none h-14 w-auto select-none"
-              />
+              <Wordmark className="h-14" />
               <p className="mx-auto max-w-md text-base font-medium leading-relaxed text-text-dim">
                 {t('ob.welcome.sub')}
               </p>

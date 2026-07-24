@@ -1,4 +1,4 @@
-import logoUrl from '../assets/logo.png';
+import { Wordmark } from './Wordmark';
 
 /** Boot splash: wordmark over the focus-screen glow + a sweeping accent arc. */
 export function Splash() {
@@ -12,12 +12,7 @@ export function Splash() {
         }}
         aria-hidden
       />
-      <img
-        src={logoUrl}
-        alt="Locked In"
-        draggable={false}
-        className="pointer-events-none relative h-12 w-auto select-none"
-      />
+      <Wordmark className="relative h-12" />
       <svg
         width="36"
         height="36"

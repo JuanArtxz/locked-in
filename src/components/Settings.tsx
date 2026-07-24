@@ -555,6 +555,42 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
               onChange={(v) => update('refboard_enabled', v)}
             />
           </Field>
+          <Field label={t('set.canvashk')} hint={t('set.canvashk.hint')}>
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={
+                  settings.canvas_hotkey
+                    ? settings.canvas_hotkey.replace('CommandOrControl', 'Ctrl')
+                    : ''
+                }
+                placeholder={t('set.canvashk.ph')}
+                onKeyDown={(e) => {
+                  e.preventDefault();
+                  const raw = e.key;
+                  if (['Control', 'Shift', 'Alt', 'Meta'].includes(raw)) return;
+                  const mods: string[] = [];
+                  if (e.ctrlKey || e.metaKey) mods.push('CommandOrControl');
+                  if (e.altKey) mods.push('Alt');
+                  if (e.shiftKey) mods.push('Shift');
+                  // a bare letter would swallow normal typing system-wide
+                  if (mods.length === 0) return;
+                  const key = raw.length === 1 ? raw.toUpperCase() : raw;
+                  update('canvas_hotkey', [...mods, key].join('+'));
+                }}
+                className="w-44 cursor-pointer rounded-lg border border-border bg-bg/60 px-3 py-2 text-center text-[13px] font-bold text-text outline-none placeholder:font-medium placeholder:text-text-faint focus:border-accent/60"
+              />
+              {settings.canvas_hotkey && (
+                <button
+                  type="button"
+                  onClick={() => update('canvas_hotkey', '')}
+                  className="text-xs font-bold text-text-faint transition-colors hover:text-danger"
+                >
+                  {t('tasks.done.clear')}
+                </button>
+              )}
+            </div>
+          </Field>
         </Section>
 
         <Section title={t('set.overlay')}>

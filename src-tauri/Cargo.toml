@@ -39,6 +39,8 @@ base64 = "0.22.1"
 webview2-com = "0.38"
 # Discord Rich Presence over the local IPC pipe (no token, public app id)
 discord-rich-presence = "0.2"
+# user-definable canvas hotkey
+tauri-plugin-global-shortcut = "2"
 
 [dependencies.windows]
 version = "0.61"

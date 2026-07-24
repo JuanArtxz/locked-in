@@ -8,7 +8,7 @@ import { formatDurationShort, formatHms } from '../lib/time';
 import type { OverlaySize, OverlayState } from '../types';
 import { Mascot } from './Mascot';
 import type { MascotMood } from './Mascot';
-import logoUrl from '../assets/logo.png';
+import { Wordmark } from './Wordmark';
 
 const INITIAL: OverlayState = {
   phase: 'idle',
@@ -252,14 +252,8 @@ export function Overlay() {
       {s.phase === 'idle' && (
         <>
           <div data-tauri-drag-region className="min-w-0 flex-1">
-            <img
-              data-tauri-drag-region
-              src={logoUrl}
-              alt="Locked In"
-              draggable={false}
-              className={`pointer-events-none w-auto select-none ${
-                s.cfg.size === 'lg' ? 'h-5' : s.cfg.size === 'md' ? 'h-4' : 'h-3'
-              }`}
+            <Wordmark
+              className={s.cfg.size === 'lg' ? 'h-5' : s.cfg.size === 'md' ? 'h-4' : 'h-3'}
             />
             <div data-tauri-drag-region className={`leading-tight text-text-dim ${sz.sub}`}>
               {s.todaySec > 0 ? t('ov.today', formatDurationShort(s.todaySec)) : t('ov.none')}

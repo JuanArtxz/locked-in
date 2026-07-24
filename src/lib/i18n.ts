@@ -1156,6 +1156,12 @@ const dict: Record<string, { pt: string; en: string }> = {
     en: 'Opens the welcome walkthrough again.',
   },
   'set.retour.btn': { pt: 'Rever', en: 'Replay' },
+  'set.canvashk': { pt: 'Atalho do canvas', en: 'Canvas hotkey' },
+  'set.canvashk.hint': {
+    pt: 'Atalho global que abre e fecha o canvas de qualquer lugar.',
+    en: 'Global shortcut that opens and closes the canvas from anywhere.',
+  },
+  'set.canvashk.ph': { pt: 'Clica e aperta as teclas', en: 'Click and press the keys' },
   'set.discord': { pt: 'Rich Presence no Discord', en: 'Discord Rich Presence' },
   'set.discord.hint': {
     pt: 'Mostra no seu status do Discord o projeto e o tempo focado.',

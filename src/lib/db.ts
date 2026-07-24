@@ -814,6 +814,7 @@ const SETTINGS_DEFAULTS: Settings = {
   pomodoro_enabled: false,
   telemetry_enabled: false,
   discord_presence_enabled: true,
+  canvas_hotkey: '',
   clock_style: 'classic',
   focus_minimal: false,
 };

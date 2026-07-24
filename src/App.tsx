@@ -1811,6 +1811,33 @@ function AppShell() {
       .catch(() => {});
   }, [settingsHook.settings?.overlay_enabled]);
 
+  // user-defined global hotkey toggles the canvas window (refboard_enabled)
+  useEffect(() => {
+    const hk = settingsHook.settings?.canvas_hotkey;
+    if (!hk) return;
+    let disposed = false;
+    import('@tauri-apps/plugin-global-shortcut')
+      .then(({ register, unregister }) => {
+        if (disposed) return;
+        register(hk, (e) => {
+          if (e.state === 'Pressed') {
+            settingsUpdateRef.current(
+              'refboard_enabled',
+              !settingsRef.current?.refboard_enabled,
+            );
+          }
+        }).catch(() => {});
+        return () => unregister(hk).catch(() => {});
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      import('@tauri-apps/plugin-global-shortcut')
+        .then(({ unregister }) => unregister(hk))
+        .catch(() => {});
+    };
+  }, [settingsHook.settings?.canvas_hotkey]);
+
   // show/hide the reference board per setting; its ✕ flips the setting off
   useEffect(() => {
     const enabled = settingsHook.settings?.refboard_enabled;
