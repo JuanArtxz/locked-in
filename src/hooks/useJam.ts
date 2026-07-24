@@ -114,6 +114,9 @@ export function useJam(
       checkIncoming().catch(() => {});
       checkSent().catch(() => {});
     };
+    // sweep the graveyard once per session — stale pending rows from crashed/
+    // closed apps deadlock the pair-unique index until somebody deletes them
+    social.cleanMyStaleJamInvites().catch(() => {});
     poke();
     const unsub = social.subscribeJamInvites(poke);
     const iv = window.setInterval(poke, 20_000); // backstop if realtime hiccups
@@ -155,6 +158,9 @@ export function useJam(
       task: string,
       sessionStartedAt: string,
     ) => {
+      // clear expired pending rows first — the pair-unique index would bounce
+      // this send off a corpse from a closed app otherwise
+      await social.cleanMyStaleJamInvites().catch(() => {});
       const r = await social.sendJamInvite(toUserId, kind, task, sessionStartedAt);
       if ('error' in r) return r.error;
       sentRef.current.set(r.id, { username: toUsername, kind });

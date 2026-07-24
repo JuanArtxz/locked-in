@@ -483,6 +483,24 @@ export async function answerJamInvite(
   return error ? error.message : null;
 }
 
+/**
+ * Deletes EXPIRED pending invites involving me (either direction). The
+ * "one pending per pair" unique index otherwise deadlocks a pair forever:
+ * the sender's app only cancels invites it still tracks in memory, so a
+ * restart leaves a stale pending row that blocks every future invite.
+ */
+export async function cleanMyStaleJamInvites(): Promise<void> {
+  const user = await currentUser();
+  if (!user) return;
+  const cutoff = new Date(Date.now() - JAM_INVITE_TTL_MS).toISOString();
+  await supabase
+    .from('jam_invites')
+    .delete()
+    .eq('status', 'pending')
+    .lt('created_at', cutoff)
+    .or(`from_user.eq.${user.id},to_user.eq.${user.id}`);
+}
+
 export async function cancelJamInvite(id: number): Promise<void> {
   await supabase.from('jam_invites').delete().eq('id', id);
 }
