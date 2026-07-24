@@ -843,6 +843,16 @@ struct PresenceData {
 static PRESENCE_TX: std::sync::OnceLock<std::sync::mpsc::Sender<PresenceData>> =
   std::sync::OnceLock::new();
 
+// ACTIVITY_JOIN can land BEFORE the webview registered its listener (discord
+// launching the closed app, or a click during boot) — park it here and let the
+// frontend pull it once it's ready.
+static PENDING_JOIN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[tauri::command]
+fn take_discord_join() -> Option<String> {
+  PENDING_JOIN.lock().ok().and_then(|mut g| g.take())
+}
+
 fn start_presence_thread() {
   let (tx, rx) = std::sync::mpsc::channel::<PresenceData>();
   let _ = PRESENCE_TX.set(tx);
@@ -996,6 +1006,9 @@ fn start_presence_events(app: tauri::AppHandle) {
           Ok((_, v)) => {
             if v.get("evt").and_then(|e| e.as_str()) == Some("ACTIVITY_JOIN") {
               if let Some(sec) = v.pointer("/data/secret").and_then(|s| s.as_str()) {
+                if let Ok(mut g) = PENDING_JOIN.lock() {
+                  *g = Some(sec.to_string());
+                }
                 let _ = app.emit("discord:join", sec.to_string());
                 show_main(&app);
               }
@@ -1505,7 +1518,8 @@ pub fn run() {
       load_canvas,
       dpapi_encrypt,
       dpapi_decrypt,
-      discord_presence
+      discord_presence,
+      take_discord_join
     ])
     .setup(|app| {
       // fix dbs coming from legacy installers BEFORE the frontend loads the db

@@ -1293,7 +1293,13 @@ function AppShell() {
   // id/username/session — fire the ordinary jam REQUEST at them. Ref pattern so
   // the once-registered listener always sees fresh state.
   const discordJoinRef = useRef<(secret: string) => void>(() => {});
+  // the same click can arrive twice (live event + boot pull) — handle once
+  const lastJoinRef = useRef<{ secret: string; at: number }>({ secret: '', at: 0 });
   discordJoinRef.current = (secret) => {
+    if (lastJoinRef.current.secret === secret && Date.now() - lastJoinRef.current.at < 15_000) {
+      return;
+    }
+    lastJoinRef.current = { secret, at: Date.now() };
     const parts = secret.split('|');
     if (parts.length < 5 || parts[0] !== '1') return;
     const [, uid, uname, epoch, ...taskParts] = parts;
@@ -1347,6 +1353,16 @@ function AppShell() {
     });
     return () => unlisten?.();
   }, []);
+  // a join that LAUNCHED the app fired before this webview existed — pull the
+  // parked secret once the account is actually ready to act on it
+  useEffect(() => {
+    if (!signedIn || !social.state?.me?.user_id) return;
+    invoke<string | null>('take_discord_join')
+      .then((secret) => {
+        if (secret) discordJoinRef.current(secret);
+      })
+      .catch(() => {});
+  }, [signedIn, social.state?.me?.user_id]);
 
   // answers coming from the corner popup's Accept/Decline buttons
   const answerJamPromptRef = useRef<(accept: boolean) => void>(() => {});
