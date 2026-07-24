@@ -25,7 +25,8 @@ export interface JamHook {
   prompt: JamPrompt | null;
   clearPrompt: () => void;
   answer: (accept: boolean) => Promise<JamPrompt | null>;
-  cancelSent: () => void;
+  /** no arg = cancel everything I sent; with a kind, only that kind dies */
+  cancelSent: (kind?: 'invite' | 'request') => void;
   send: (
     toUserId: string,
     toUsername: string,
@@ -140,11 +141,12 @@ export function useJam(
     return p;
   }, []);
 
-  /** Cancels every invite I sent that's still pending — called when my jam
-   *  fills up (1:1 = 2 people) or my session ends, so a late "accept" can't
-   *  spawn a ghost jam. */
-  const cancelSent = useCallback(() => {
-    for (const [id] of [...sentRef.current]) {
+  /** Cancels pending invites I sent — all of them, or only one kind. Called
+   *  when my jam fills up (everything) or my session ends (invites only:
+   *  requests FROM an idle user are valid, acceptance cold-starts a session). */
+  const cancelSent = useCallback((kind?: 'invite' | 'request') => {
+    for (const [id, meta] of [...sentRef.current]) {
+      if (kind && meta.kind !== kind) continue;
       sentRef.current.delete(id);
       social.cancelJamInvite(id).catch(() => {});
     }

@@ -1000,8 +1000,15 @@ function AppShell() {
   const jamCancelRef = useRef<() => void>(() => {});
   jamCancelRef.current = jam.cancelSent;
   useEffect(() => {
-    if (focus.phase === 'idle' || (focus.jam && focus.jam.members.length >= 2)) {
+    if (focus.jam && focus.jam.members.length >= 2) {
+      // seat filled — nothing outgoing makes sense anymore
       jam.cancelSent();
+    } else if (focus.phase === 'idle') {
+      // idle can't HOST, so invites die — but a REQUEST sent while idle is the
+      // normal Discord-join case: acceptance cold-starts my session. This used
+      // to cancel requests too, which killed every idle user's join click
+      // milliseconds after "request sent".
+      jam.cancelSent('invite');
     }
   }, [focus.phase, focus.jam, jam]);
 
