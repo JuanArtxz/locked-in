@@ -875,19 +875,30 @@ fn start_presence_thread() {
         }
       }
       if let Some(c) = client.as_mut() {
-        let ok = if p.clear {
-          c.clear_activity().is_ok()
+        // discord rejects 1-char strings (min length 2) — pad, never drop
+        let details = if p.details.chars().count() == 1 {
+          format!("{}.", p.details)
+        } else {
+          p.details.clone()
+        };
+        let state = if p.state.chars().count() == 1 {
+          format!("{}.", p.state)
+        } else {
+          p.state.clone()
+        };
+        let sent = if p.clear {
+          c.clear_activity()
         } else {
           let mut act = activity::Activity::new().assets(
             activity::Assets::new()
               .large_image("logo")
               .large_text("Locked In"),
           );
-          if !p.details.is_empty() {
-            act = act.details(&p.details);
+          if !details.is_empty() {
+            act = act.details(&details);
           }
-          if !p.state.is_empty() {
-            act = act.state(&p.state);
+          if !state.is_empty() {
+            act = act.state(&state);
           }
           if let Some(ts) = p.start_epoch {
             act = act.timestamps(activity::Timestamps::new().start(ts));
@@ -903,13 +914,23 @@ fn start_presence_thread() {
           if let Some(sec) = p.join_secret.as_deref() {
             act = act.secrets(activity::Secrets::new().join(sec));
           }
-          c.set_activity(act).is_ok()
+          c.set_activity(act)
         };
-        if ok {
-          dirty = false;
-        } else {
-          // pipe died (discord closed) — drop and reconnect on the next cycle
-          client = None;
+        // the IPC is request/response: EVERY frame must be read back, or the
+        // pipe buffer fills and updates silently stop landing after a while.
+        // An ERROR response means discord rejected this payload — retrying the
+        // identical frame is pointless, so give up on it and wait for the next.
+        match sent {
+          Ok(()) => match c.recv() {
+            Ok((_, resp)) => {
+              if resp.get("evt").and_then(|e| e.as_str()) == Some("ERROR") {
+                log::warn!("discord presence rejected: {resp}");
+              }
+              dirty = false;
+            }
+            Err(_) => client = None,
+          },
+          Err(_) => client = None,
         }
       }
     }
