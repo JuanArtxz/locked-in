@@ -214,6 +214,19 @@
   color-scheme: dark;
 }
 
+/* see main.tsx: the popup/overlay windows are OS-transparent, so the whole
+   chain (canvas, html, body, #root) must stay see-through and OFF the dark
+   color-scheme that makes Chromium paint an opaque base background */
+html[data-transparent] {
+  color-scheme: normal;
+}
+html[data-transparent],
+html[data-transparent] body,
+html[data-transparent] #root {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* ---------- soft design language ----------
    same class names as the old chunky pass so no component changes: hairline
    borders, big radii, layered diffuse shadows, lift on hover. */

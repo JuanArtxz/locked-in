@@ -113,12 +113,20 @@ export async function logoutAndReset(): Promise<LogoutResult> {
   // that would be permanent data loss, so refuse and let the user trim it first
   try {
     const canvas = await invoke<string>('load_canvas');
-    if (canvas.length > 8_000_000) return { kind: 'canvas-too-big' };
+    if (canvas.length > 8_000_000) {
+      // the session must not survive a refused logout: being offline is enough
+      // to hit these branches, and the UI already told the user they are out
+      await supabase.auth.signOut().catch(() => {});
+      return { kind: 'canvas-too-big' };
+    }
   } catch {
     /* no canvas — nothing at risk */
   }
   const err = await uploadSnapshot();
-  if (err) return { kind: 'sync-failed', message: err };
+  if (err) {
+    await supabase.auth.signOut().catch(() => {});
+    return { kind: 'sync-failed', message: err };
+  }
   await supabase.auth.signOut();
   await db.wipeAll();
   await invoke('save_canvas', { data: '' }).catch(() => {});

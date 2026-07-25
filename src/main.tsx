@@ -12,6 +12,16 @@ const CanvasMode = lazy(() => import('./components/Canvas.tsx'))
 
 const label = getCurrentWebviewWindow().label
 
+// Transparent windows (corner popup, floating overlay) must be transparent
+// BEFORE the first paint, and `color-scheme: dark` has to go with them: newer
+// WebView2/Chromium builds paint the frame's base background from color-scheme,
+// which lands as an opaque black rectangle behind the card no matter what
+// html/body say. The attribute drives a stylesheet rule instead of an effect
+// that only runs after the window already painted.
+if (label === 'popup' || label === 'overlay') {
+  document.documentElement.setAttribute('data-transparent', '')
+}
+
 // kill the raw WebView2 context menu (Voltar/Atualizar/Salvar como/DevTools) —
 // text fields keep it so paste/spellcheck still work
 document.addEventListener('contextmenu', (e) => {

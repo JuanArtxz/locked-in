@@ -54,18 +54,21 @@ prejuízo de medidas legais.
 5.1 Você mantém a titularidade do seu Conteúdo. Você nos concede licença
 gratuita e limitada para armazenar, transmitir e exibir esse Conteúdo apenas
 na medida necessária para operar o Serviço.
-5.2 Mensagens diretas são criptografadas de ponta a ponta — NÃO temos acesso
-técnico ao seu conteúdo. O chat de grupo é criptografado de ponta a ponta
-quando todos os membros usam versão compatível; caso contrário, é protegido
-por controle de acesso, mas não por criptografia de ponta a ponta.
+5.2 Mensagens diretas e de grupo ficam armazenadas no servidor em texto
+legível e são protegidas por controle de acesso (Row Level Security): só você
+e o destinatário — ou os membros do grupo — conseguem lê-las pelo Serviço.
+NÃO usamos criptografia de ponta a ponta: tecnicamente, o conteúdo é
+acessível a quem administra a infraestrutura. Anexos (imagens e áudios) são
+cifrados individualmente no armazenamento. Não leia nem envie por aqui nada
+que você não confiaria a um serviço de chat comum.
 5.3 Você é o único responsável pelo seu Conteúdo e declara ter os direitos
 necessários sobre ele.
 
 6. MODERAÇÃO
 Podemos, mediante denúncia ou de ofício, remover conteúdo e suspender contas
 que violem estes Termos. Ferramentas de bloqueio e denúncia estão
-disponíveis no app. Como as DMs são criptografadas, denúncias de DM dependem
-das informações fornecidas pelo denunciante.
+disponíveis no app. Denúncias de DM são apuradas com base nas informações
+fornecidas pelo denunciante e, quando necessário, no conteúdo reportado.
 
 7. ASSINATURA, PAGAMENTO E DIREITO DE ARREPENDIMENTO
 7.1 Preço, funcionalidades incluídas e periodicidade dos Recursos Pagos serão
@@ -154,10 +157,13 @@ removal, suspension or termination without refund, and legal action.
 5. USER CONTENT
 5.1 You retain ownership of your Content. You grant us a free, limited license
 to store, transmit and display it only as needed to operate the Service.
-5.2 Direct messages are end-to-end encrypted — we have NO technical access to
-their content. Group chat is end-to-end encrypted when all members run a
-compatible version; otherwise it is access-controlled but not end-to-end
-encrypted.
+5.2 Direct and group messages are stored on the server in readable form and
+protected by access control (Row Level Security): only you and the recipient —
+or the group's members — can read them through the Service. We do NOT use
+end-to-end encryption: technically, whoever administers the infrastructure can
+access the content. Attachments (images and voice) are individually encrypted
+at rest. Don't send anything here you wouldn't trust to an ordinary chat
+service.
 5.3 You are solely responsible for your Content and warrant you hold the
 necessary rights to it.
 
@@ -232,11 +238,10 @@ privacidade: brgamesjao@gmail.com.
   se você ATIVAR o auto-tracker), horas semanais/totais — visíveis a
   amigos/colegas de grupo. Base legal: consentimento (auto-tracker) e
   execução de contrato.
-• Mensagens diretas: criptografadas de ponta a ponta no seu dispositivo. O
-  servidor guarda apenas texto cifrado; imagens e áudios trafegam cifrados.
-  NÃO temos acesso ao conteúdo.
-• Grupos: mensagens criptografadas de ponta a ponta quando todos os membros
-  usam versão compatível; caso contrário, protegidas por controle de acesso.
+• Mensagens diretas e de grupo: guardadas no servidor em texto legível,
+  protegidas por controle de acesso (Row Level Security) — só as partes da
+  conversa leem pelo Serviço. NÃO há criptografia de ponta a ponta.
+  Anexos (imagens e áudios) são cifrados individualmente no armazenamento.
 • Relatórios de erro: SOMENTE se você ativar a telemetria (desativada por
   padrão) — versão do app, sistema operacional e a mensagem/rastro do erro.
   Nunca conteúdo de mensagens. Base legal: consentimento.
@@ -282,8 +287,9 @@ intencionalmente dados de crianças. Identificado tal caso, os dados serão
 eliminados.
 
 9. SEGURANÇA
-Adotamos medidas técnicas como criptografia de ponta a ponta das DMs, Row
-Level Security no banco, e criptografia de credenciais em repouso. Nenhum
+Adotamos medidas técnicas como Row Level Security no banco (isolamento por
+conta), cifragem dos anexos de chat no armazenamento, tráfego sempre em TLS e
+criptografia de credenciais em repouso no seu dispositivo. Nenhum
 sistema é 100% imune; incidentes relevantes serão comunicados conforme a lei.
 
 10. ALTERAÇÕES
@@ -310,11 +316,11 @@ requests. Privacy contact: brgamesjao@gmail.com.
 • Presence: whether you are focusing, foreground work app (only if you ENABLE
   the auto-tracker), weekly/total hours — visible to friends/groupmates.
   Legal basis: consent (auto-tracker) and contract.
-• Direct messages: end-to-end encrypted on your device. The server stores
-  ciphertext only; images and voice travel encrypted. We have NO access to
-  content.
-• Groups: end-to-end encrypted when all members run a compatible version;
-  otherwise access-controlled.
+• Direct and group messages: stored on the server in readable form and
+  protected by access control (Row Level Security) — only the conversation's
+  participants can read them through the Service. There is NO end-to-end
+  encryption. Attachments (images and voice) are individually encrypted at
+  rest.
 • Crash reports: ONLY if you enable telemetry (off by default) — app version,
   OS and the error message/trace. Never message content. Legal basis:
   consent.
@@ -355,8 +361,9 @@ The Service is not intended for children under 13. We do not knowingly
 collect their data; if found, it will be deleted.
 
 9. SECURITY
-We apply technical measures such as end-to-end encryption of DMs, database
-Row Level Security, and encryption of credentials at rest. No system is 100%
+We apply technical measures such as database Row Level Security (per-account
+isolation), encryption of chat attachments at rest, TLS for all traffic, and
+encryption of credentials at rest on your device. No system is 100%
 immune; material incidents will be communicated as required by law.
 
 10. CHANGES

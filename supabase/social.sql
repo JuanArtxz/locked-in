@@ -1789,3 +1789,177 @@ $$;
 drop trigger if exists jam_invites_rate on public.jam_invites;
 create trigger jam_invites_rate before insert on public.jam_invites
   for each row execute function public.jam_invite_rate_limit();
+
+-- ============================================================
+-- v0.50 SECURITY HARDENING (external audit of rev 072703f)
+-- Remember: this file is append-style — the LAST definition of a policy or
+-- function wins. Everything below is deliberately at the bottom.
+-- ============================================================
+
+-- ---------- REGRESSION: jam_insert lost the friendship requirement ----------
+-- The v0.43 rewrite (further up this file) dropped the accepted-friendship
+-- clause the original definition had, while KEEPING it on messages_insert and
+-- pokes_insert. A v0.49.5 patch re-added it to the *first* definition, which
+-- the v0.43 block then overrode — so it never took effect in the live database.
+-- This is the winning definition now.
+drop policy if exists jam_insert on public.jam_invites;
+create policy jam_insert on public.jam_invites
+  for insert to authenticated
+  with check (
+    auth.uid() = from_user and status = 'pending'
+    and not public.block_between(to_user)
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.requester = from_user and f.addressee = to_user)
+          or (f.requester = to_user and f.addressee = from_user))
+    )
+  );
+
+-- ---------- client-supplied created_at defeated every time-based guard ------
+-- Supabase's default table-wide INSERT grant lets a client write created_at, so
+-- a row dated in the future/past walks straight past poke_rate_limit,
+-- feed_guard, status_guard, report_guard, the story GC and the 2-minute edit
+-- window. Column-level insert grants would mean re-listing every column of
+-- every table (one omission breaks writes), so the stamp is a trigger instead.
+create or replace function public.stamp_created_at()
+returns trigger language plpgsql security definer set search_path = public as $fn$
+begin
+  new.created_at := now();
+  return new;
+end;
+$fn$;
+
+do $do$
+declare tb text;
+begin
+  foreach tb in array array[
+    'pokes', 'feed_events', 'statuses', 'reports', 'messages',
+    'group_messages', 'jam_invites', 'friendships', 'blocks',
+    'message_reactions', 'group_msg_reactions', 'group_members'
+  ]
+  loop
+    execute format('drop trigger if exists stamp_created_%1$s on public.%1$I', tb);
+    execute format(
+      'create trigger stamp_created_%1$s before insert on public.%1$I
+         for each row execute function public.stamp_created_at()', tb);
+  end loop;
+end $do$;
+
+-- ---------- a single report blocked the victim's account deletion -----------
+-- `on delete set null` against a NOT NULL column is self-contradictory: the
+-- referential action fires on auth user deletion and violates the column
+-- constraint (23502), aborting delete_my_account. reports has no SELECT/DELETE
+-- policy, so the victim could neither see nor remove the row.
+alter table public.reports drop constraint if exists reports_target_fkey;
+alter table public.reports
+  add constraint reports_target_fkey
+  foreign key (target) references auth.users(id) on delete cascade;
+
+-- ---------- profiles: a one-sided pending request counted as a bond ---------
+-- Any stranger can insert a pending friendship row, and that alone opened
+-- bio/status_text/created_at. All five sibling policies require 'accepted'.
+drop policy if exists profiles_select on public.profiles;
+create policy profiles_select on public.profiles
+  for select to authenticated
+  using (
+    auth.uid() = user_id
+    or public.shares_group_with(user_id)
+    or exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.requester = auth.uid() and f.addressee = profiles.user_id)
+          or (f.addressee = auth.uid() and f.requester = profiles.user_id))
+    )
+  );
+
+-- ---------- invite links ignored blocks, and a kick left the code the
+-- ---------- removed member already had perfectly valid --------------------
+-- NOTE: group_members deliberately does NOT get `force row level security` —
+-- redeem_group_invite is SECURITY DEFINER and a self-join can never satisfy
+-- gm_insert's friend requirement, so forcing RLS would kill invite links
+-- outright. The join path itself is hardened instead.
+create or replace function public.redeem_group_invite(code text)
+returns bigint language plpgsql security definer set search_path = public as $fn$
+declare gid bigint; owner_id uuid;
+begin
+  select id, owner into gid, owner_id
+    from groups where invite_code = code and invite_code is not null;
+  if gid is null then
+    raise exception 'invalid invite';
+  end if;
+  if (select count(*) from group_members where group_id = gid) >= 5 then
+    raise exception 'group is full (max 5 members)';
+  end if;
+  -- a block either way closes the door: co-membership is an OR branch of
+  -- presence_select, profiles_select and the ubox write policy
+  if exists (
+    select 1 from blocks b
+    where (b.blocker = owner_id and b.blocked = auth.uid())
+       or (b.blocker = auth.uid() and b.blocked = owner_id)
+  ) then
+    raise exception 'invalid invite';
+  end if;
+  insert into group_members (group_id, user_id, added_by)
+    values (gid, auth.uid(), auth.uid())
+    on conflict (group_id, user_id) do nothing;
+  return gid;
+end;
+$fn$;
+revoke all on function public.redeem_group_invite(text) from public;
+grant execute on function public.redeem_group_invite(text) to authenticated;
+
+-- being kicked invalidates the shared link (leaving — deleting your own row —
+-- leaves the code alone)
+create or replace function public.group_kick_rotates_invite()
+returns trigger language plpgsql security definer set search_path = public as $fn$
+begin
+  if old.user_id is distinct from auth.uid() then
+    update groups set invite_code = null where id = old.group_id;
+  end if;
+  return old;
+end;
+$fn$;
+drop trigger if exists gm_kick_rotate on public.group_members;
+create trigger gm_kick_rotate after delete on public.group_members
+  for each row execute function public.group_kick_rotates_invite();
+
+-- ---------- unbounded write paths the owner pays for ----------
+alter table public.groups drop constraint if exists groups_jam_task_len;
+alter table public.groups add constraint groups_jam_task_len
+  check (jam_task is null or char_length(jam_task) <= 200) not valid;
+
+alter table public.snapshots drop constraint if exists snapshots_data_len;
+alter table public.snapshots add constraint snapshots_data_len
+  check (pg_column_size(data) <= 12000000) not valid;
+alter table public.snapshots drop constraint if exists snapshots_canvas_len;
+alter table public.snapshots add constraint snapshots_canvas_len
+  check (canvas is null or char_length(canvas) <= 12000000) not valid;
+
+-- lifetime seconds are self-reported (local SQLite is the only source), but a
+-- decade of focus is not a real number — badges shouldn't be mintable
+alter table public.presence drop constraint if exists presence_total_sane;
+alter table public.presence add constraint presence_total_sane
+  check (total_sec >= 0 and total_sec <= 315360000) not valid;
+
+-- ---------- lookup_profiles: `limit 30` capped rows RETURNED, not names
+-- ---------- TESTED — 100k names made it a mass existence oracle ----------
+create or replace function public.lookup_profiles(names text[])
+returns table(username text, avatar_b64 text)
+language plpgsql security definer set search_path = public as $fn$
+begin
+  if names is null or array_length(names, 1) is null then
+    return;
+  end if;
+  if array_length(names, 1) > 30 then
+    raise exception 'too many names';
+  end if;
+  return query
+    select p.username, p.avatar_b64
+    from public.profiles p
+    where lower(p.username) = any (select lower(n) from unnest(names) as n)
+    limit 30;
+end;
+$fn$;
+revoke all on function public.lookup_profiles(text[]) from public;
+grant execute on function public.lookup_profiles(text[]) to authenticated;
