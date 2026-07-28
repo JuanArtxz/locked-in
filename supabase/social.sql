@@ -1963,3 +1963,26 @@ end;
 $fn$;
 revoke all on function public.lookup_profiles(text[]) from public;
 grant execute on function public.lookup_profiles(text[]) to authenticated;
+
+-- ---------- v0.50.1: pending friend requests showed up as "@???" ----------
+-- Tightening profiles_select to accepted-only (v0.50) was right — a stranger
+-- inserting a pending row must not open bio/status_text — but the friends
+-- screen legitimately needs to name whoever just requested you, and the app
+-- read that from the same table. This RPC hands back ONLY username + avatar,
+-- and only for people on the other end of a pending row involving me, so the
+-- data the hardening protects (bio, status_text, created_at) stays closed.
+create or replace function public.pending_request_profiles()
+returns table(user_id uuid, username text, avatar_b64 text)
+language sql security definer set search_path = public as $fn$
+  select p.user_id, p.username, p.avatar_b64
+  from public.profiles p
+  where exists (
+    select 1 from public.friendships f
+    where f.status = 'pending'
+      and ((f.requester = auth.uid() and f.addressee = p.user_id)
+        or (f.addressee = auth.uid() and f.requester = p.user_id))
+  )
+  limit 200;
+$fn$;
+revoke all on function public.pending_request_profiles() from public;
+grant execute on function public.pending_request_profiles() to authenticated;

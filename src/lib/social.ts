@@ -174,10 +174,18 @@ export async function loadFriendsState(): Promise<FriendsState> {
   }
   const profiles = new Map<string, ProfileWithKey>();
   if (otherIds.length > 0) {
-    const { data: profs } = await supabase
-      .from('profiles')
-      .select('user_id, username, avatar_b64, e2e_pub, bio, status_text')
-      .in('user_id', otherIds);
+    // profiles is readable for accepted friends/groupmates only. Pending
+    // requesters (either direction) come from a SECURITY DEFINER RPC that
+    // exposes just the name and avatar — otherwise the requests list would
+    // render "@???" for the very people it's asking you to accept.
+    const [{ data: profs }, { data: pend }] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('user_id, username, avatar_b64, e2e_pub, bio, status_text')
+        .in('user_id', otherIds),
+      supabase.rpc('pending_request_profiles'),
+    ]);
+    for (const p of (pend ?? []) as ProfileWithKey[]) profiles.set(p.user_id, p);
     for (const p of (profs ?? []) as ProfileWithKey[]) profiles.set(p.user_id, p);
   }
 
