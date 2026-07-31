@@ -412,7 +412,15 @@ function AppShell() {
         jamSeenRef.current.add(k);
         return true;
       }
-      return !jamSeenRef.current.has(k); // seen before & now not live → prune
+      // Not live. The seen-first rule below only exists to protect the first
+      // seconds of a jam, when the guest's heartbeat (60s) hasn't published
+      // "focusing" yet — but it lives in memory, so a mate whose PC died while
+      // my app was closed would stay in the roster forever. A DEAD heartbeat is
+      // server-side proof they're gone, independent of what this process saw.
+      if (!row) return true; // presence not loaded — can't judge
+      const ageMs = Date.now() - new Date(row.updated_at).getTime();
+      if (ageMs > socialLib.PRESENCE_STALE_MS) return false;
+      return !jamSeenRef.current.has(k); // fresh row, just not focusing yet
     });
     // friend jams are two people, full stop — anything beyond is a stale
     // artifact from older versions and gets trimmed to me + first partner
