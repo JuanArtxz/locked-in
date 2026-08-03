@@ -96,6 +96,8 @@ export interface Settings {
   /** opt-in crash reports — OFF by default, never message content */
   telemetry_enabled: boolean;
   discord_presence_enabled: boolean;
+  /** silence nudges/quotes unless a focus session is running */
+  quiet_when_idle: boolean;
   /** global hotkey that toggles the canvas window, '' = off */
   canvas_hotkey: string;
   /** focus-screen timer look: classic | thin | mono | serif | stack */

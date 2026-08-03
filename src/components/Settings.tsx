@@ -730,6 +730,12 @@ export function SettingsScreen({ settingsHook, onError }: SettingsProps) {
               onChange={(v) => update('telemetry_enabled', v)}
             />
           </Field>
+          <Field label={t('set.quiet')} hint={t('set.quiet.hint')}>
+            <Toggle
+              checked={settings.quiet_when_idle}
+              onChange={(v) => update('quiet_when_idle', v)}
+            />
+          </Field>
           <Field label={t('set.discord')} hint={t('set.discord.hint')}>
             <Toggle
               checked={settings.discord_presence_enabled}

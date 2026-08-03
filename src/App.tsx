@@ -464,7 +464,17 @@ function AppShell() {
       // jam on everyone else's side
       const focusing = phase === 'focusing' || phase === 'paused' || phase === 'rating';
       // fairness: AFK time never counts toward the published leaderboard
-      const liveSec = focusing ? Math.max(0, elapsedSec - afkSec) : 0;
+      let liveSec = focusing ? Math.max(0, elapsedSec - afkSec) : 0;
+      // ...and a session that began before this week only contributes the part
+      // that actually happened inside it (same reason the DB splits at midnight)
+      const startedAt = focusRef.current.activeSession?.started_at;
+      if (liveSec > 0 && startedAt) {
+        const weekStartMs = socialLib.weekStart().getTime();
+        const startMs = new Date(startedAt).getTime();
+        if (startMs < weekStartMs) {
+          liveSec = Math.min(liveSec, Math.max(0, (Date.now() - weekStartMs) / 1000));
+        }
+      }
       try {
         if (!appVersion) appVersion = await getVersion().catch(() => '0.0.0');
         const saved = await db.getFocusSecondsSince(socialLib.weekStart().toISOString());
@@ -750,6 +760,7 @@ function AppShell() {
       autotrack_apps: s.autotrack_apps,
       quotes_enabled: s.quotes_enabled,
       quotes_interval_min: s.quotes_interval_min,
+      only_session: s.quiet_when_idle,
       session_active: focus.phase === 'focusing',
       suspended: focus.phase === 'paused' || focus.phase === 'break',
       lang: s.language === 'pt' ? 'pt' : 'en',
@@ -788,13 +799,29 @@ function AppShell() {
     }
   }, [focus.phase]);
 
+  // the app can sit open across midnight: without a day watcher, "today" kept
+  // accumulating on YESTERDAY's number (a session started at 22h still counted
+  // its 3am hours in the previous day) and no day-scoped view ever rolled over
+  const [dayKey, setDayKey] = useState(() => todayKey());
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const k = todayKey();
+      setDayKey((prev) => {
+        if (prev === k) return prev;
+        setRefreshKey((n) => n + 1); // repull every day-scoped view
+        return k;
+      });
+    }, 20_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // today's total (for overlay goal bar)
   const [todaySec, setTodaySec] = useState(0);
   useEffect(() => {
-    db.getDaySummary(todayKey())
+    db.getDaySummary(dayKey)
       .then((d) => setTodaySec(d.total_sec))
       .catch((err) => onError(String(err)));
-  }, [refreshKey, onError]);
+  }, [refreshKey, dayKey, onError]);
 
   const goalSec = (settingsHook.settings?.daily_goal_hours ?? 4) * 3600;
   // todayElapsedSec: sessions crossing midnight only count today's share

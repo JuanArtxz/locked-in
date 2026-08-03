@@ -167,6 +167,10 @@ struct WatcherCfg {
   /// mascot motivational quotes every N minutes
   quotes_enabled: bool,
   quotes_interval_min: u64,
+  /// user asked the app to stay QUIET unless a session is running: nudges and
+  /// mascot quotes only fire while focusing
+  #[serde(default)]
+  only_session: bool,
   session_active: bool,
   /// true while on break or paused — nudges stay quiet
   suspended: bool,
@@ -425,7 +429,7 @@ fn popup_watcher(handle: tauri::AppHandle) {
       .unwrap_or(false);
 
     // ---- mascot quotes on a timer (the popup picks the phrase itself) ----
-    if cfg.quotes_enabled {
+    if cfg.quotes_enabled && (!cfg.only_session || cfg.session_active) {
       let interval_secs = cfg.quotes_interval_min.clamp(1, 24 * 60) * 60;
       if st.quote_countdown_sec == 0 || st.quote_countdown_sec > interval_secs {
         st.quote_countdown_sec = interval_secs;
@@ -453,6 +457,7 @@ fn popup_watcher(handle: tauri::AppHandle) {
     }
 
     if cfg.nudge_enabled
+      && (!cfg.only_session || cfg.session_active)
       && !cfg.suspended
       && cooldown_ok
       && !popup_busy

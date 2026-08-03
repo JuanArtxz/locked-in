@@ -1162,6 +1162,11 @@ const dict: Record<string, { pt: string; en: string }> = {
     en: 'Global shortcut that opens and closes the canvas from anywhere.',
   },
   'set.canvashk.ph': { pt: 'Clica e aperta as teclas', en: 'Click and press the keys' },
+  'set.quiet': { pt: 'Silêncio fora de sessão', en: 'Quiet outside sessions' },
+  'set.quiet.hint': {
+    pt: 'Sem alertas de distração nem frases do mascote enquanto você não estiver em sessão.',
+    en: "No distraction nudges or mascot quotes while you're not in a session.",
+  },
   'set.discord': { pt: 'Rich Presence no Discord', en: 'Discord Rich Presence' },
   'set.discord.hint': {
     pt: 'Mostra no seu status do Discord o projeto e o tempo focado.',
